@@ -1,0 +1,218 @@
+# DeepSearch Docker Compose 配置
+# 版本: v1.0
+
+services:
+  # ========================================
+  # 前端服务 (Nginx)
+  # ========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deepsearch-frontend
+    restart: unless-stopped
+    ports:
+      - "3200:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - deepsearch-network
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ========================================
+  # 后端 API 服务
+  # ========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deepsearch-backend
+    restart: unless-stopped
+    environment:
+      - APP_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-deepsearch}
+      - DB_USER=${DB_USER:-deepsearch}
+      - DB_PASSWORD=${DB_PASSWORD:-deepsearch123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MEILI_HOST=meilisearch
+      - MEILI_PORT=7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-deepsearch_meili_key}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-secret-key}
+      - APP_SECRET_KEY=${APP_SECRET_KEY:-change-this-app-secret}
+      - FILE_STORAGE_PATH=/data/files
+      - BACKUP_STORAGE_PATH=/data/backups
+    volumes:
+      - file-storage:/data/files
+      - backup-storage:/data/backups
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    networks:
+      - deepsearch-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8200/api/v1/health" ] # Changed backend health check port to 8200
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ========================================
+  # Celery Worker
+  # ========================================
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deepsearch-celery-worker
+    restart: unless-stopped
+    command: celery -A app.tasks worker -l info -Q high,low,maintenance -c 4
+    environment:
+      - APP_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-deepsearch}
+      - DB_USER=${DB_USER:-deepsearch}
+      - DB_PASSWORD=${DB_PASSWORD:-deepsearch123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MEILI_HOST=meilisearch
+      - MEILI_PORT=7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-deepsearch_meili_key}
+      - FILE_STORAGE_PATH=/data/files
+      - BACKUP_STORAGE_PATH=/data/backups
+    volumes:
+      - file-storage:/data/files
+      - backup-storage:/data/backups
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - deepsearch-network
+
+  # ========================================
+  # Celery Beat (定时任务)
+  # ========================================
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deepsearch-celery-beat
+    restart: unless-stopped
+    command: celery -A app.tasks beat -l info
+    environment:
+      - APP_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - celery-worker
+    networks:
+      - deepsearch-network
+
+  # ========================================
+  # PostgreSQL 数据库
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: deepsearch-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME:-deepsearch}
+      - POSTGRES_USER=${DB_USER:-deepsearch}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-deepsearch123}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432" # 仅本机可访问
+    networks:
+      - deepsearch-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-deepsearch} -d ${DB_NAME:-deepsearch}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ========================================
+  # Redis 缓存
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: deepsearch-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379" # 仅本机可访问
+    networks:
+      - deepsearch-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Meilisearch 搜索引擎
+  # ========================================
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: deepsearch-meilisearch
+    restart: unless-stopped
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-deepsearch_meili_key}
+      - MEILI_ENV=production
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meilisearch-data:/meili_data
+    ports:
+      - "127.0.0.1:7700:7700" # 仅本机可访问
+    networks:
+      - deepsearch-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7700/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# ========================================
+# 网络配置
+# ========================================
+networks:
+  deepsearch-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ========================================
+# 数据卷配置
+# ========================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  meilisearch-data:
+    driver: local
+  file-storage:
+    driver: local
+  backup-storage:
+    driver: local

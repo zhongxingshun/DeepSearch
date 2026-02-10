@@ -1,0 +1,96 @@
+"""
+文件 Schema 定义
+版本: v1.0
+"""
+
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class FileBase(BaseModel):
+    """文件基础模型"""
+
+    filename: str = Field(..., description="文件名")
+
+
+class FileCreate(FileBase):
+    """创建文件记录"""
+
+    file_path: str = Field(..., description="文件路径")
+    file_size: int = Field(..., description="文件大小（字节）")
+    file_type: str = Field(..., description="文件类型")
+    md5_hash: Optional[str] = Field(None, description="MD5 哈希")
+
+
+class FileResponse(FileBase):
+    """文件响应"""
+
+    id: int
+    file_path: str
+    folder_path: str = "/"
+    display_name: str = ""
+    uploaded_by: Optional[int]
+    file_size: int
+    file_size_human: str
+    file_type: str
+    md5_hash: Optional[str]
+    index_status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FileListResponse(BaseModel):
+    """文件列表响应"""
+
+    success: bool = True
+    data: list[FileResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class FileStatusResponse(BaseModel):
+    """文件状态响应"""
+
+    id: int
+    filename: str
+    index_status: str  # pending, processing, completed, failed
+    error_message: Optional[str] = None
+    updated_at: str  # ISO 格式字符串
+
+
+class FileUploadResponse(BaseModel):
+    """文件上传响应"""
+
+    success: bool = True
+    message: str = "文件上传成功"
+    file_id: int
+    filename: str
+    md5_hash: str
+    is_duplicate: bool = False
+    task_id: Optional[str] = None
+
+
+class FileMoveRequest(BaseModel):
+    """文件移动请求"""
+    target_folder: str = Field(..., description="目标文件夹路径")
+
+
+class FolderInfo(BaseModel):
+    """文件夹信息"""
+    path: str
+    name: str
+    file_count: int
+    children: List['FolderInfo'] = []
+
+
+class FolderListResponse(BaseModel):
+    """文件夹列表响应"""
+    success: bool = True
+    folders: List[FolderInfo]
+    current_path: str = "/"
