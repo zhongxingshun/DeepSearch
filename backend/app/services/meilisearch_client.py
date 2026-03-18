@@ -253,14 +253,14 @@ class MeilisearchClient:
         }
         
         index = self.get_index()
-        task = index.add_documents([document])
-        
+        task = index.add_documents([document], primary_key="id")
+
         return str(task.task_uid)
 
     async def add_documents(self, documents: List[Dict[str, Any]]) -> str:
         """批量添加文档"""
         index = self.get_index()
-        task = index.add_documents(documents)
+        task = index.add_documents(documents, primary_key="id")
         return str(task.task_uid)
 
     async def delete_document(self, doc_id: str) -> str:

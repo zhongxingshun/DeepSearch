@@ -10,9 +10,11 @@ CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    hashed_password VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'user',
     is_active BOOLEAN DEFAULT true,
+    failed_attempts INTEGER DEFAULT 0,
+    locked_until TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -21,11 +23,12 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS files (
     id SERIAL PRIMARY KEY,
     filename VARCHAR(255) NOT NULL,
-    file_path VARCHAR(512) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    folder_path VARCHAR(1000) DEFAULT '/' NOT NULL,
     file_size BIGINT NOT NULL DEFAULT 0,
     file_type VARCHAR(50),
     md5_hash VARCHAR(32) UNIQUE,
-    meilisearch_id VARCHAR(64),
+    meilisearch_id VARCHAR(100),
     uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     index_status VARCHAR(20) DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -60,12 +63,11 @@ CREATE TABLE IF NOT EXISTS search_history (
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    action VARCHAR(100) NOT NULL,
-    resource_type VARCHAR(50),
-    resource_id INTEGER,
+    action_type VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50),
+    target_id VARCHAR(255),
     details JSONB DEFAULT '{}',
-    ip_address VARCHAR(50),
-    user_agent TEXT,
+    ip_address VARCHAR(45),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -83,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_search_keyword ON search_history(keyword);
 CREATE INDEX IF NOT EXISTS idx_search_created ON search_history(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action_type);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 
 -- 创建全文搜索索引
@@ -112,7 +114,7 @@ CREATE TRIGGER trigger_files_updated
 
 -- 创建默认管理员用户 (密码: admin123456)
 -- 密码使用 bcrypt 加密
-INSERT INTO users (username, email, hashed_password, role, is_active)
+INSERT INTO users (username, email, password_hash, role, is_active)
 VALUES ('admin', 'admin@deepsearch.local', '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS', 'admin', true)
 ON CONFLICT (username) DO NOTHING;
 

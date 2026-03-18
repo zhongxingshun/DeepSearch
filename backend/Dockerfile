@@ -42,6 +42,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-chi-sim \
     tesseract-ocr-chi-tra \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgl1 \
+    libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -55,15 +61,17 @@ COPY . .
 
 # 创建非 root 用户
 RUN groupadd -r deepsearch && \
-    useradd -r -g deepsearch deepsearch && \
-    mkdir -p /data/files /data/backups /data/temp /app/logs && \
-    chown -R deepsearch:deepsearch /app /data
+    useradd -r -g deepsearch -m -d /home/deepsearch deepsearch && \
+    mkdir -p /home/deepsearch/.paddlex /home/deepsearch/.paddleocr /data/files /data/backups /data/temp /app/logs && \
+    chown -R deepsearch:deepsearch /app /data /home/deepsearch
 
 # 切换到非 root 用户
 USER deepsearch
 
 # 环境变量
-ENV PYTHONUNBUFFERED=1 \
+ENV HOME=/home/deepsearch \
+    PADDLE_HOME=/home/deepsearch/.paddleocr \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=production
 

@@ -81,7 +81,7 @@ def index_document(
         client = meilisearch.Client(settings.meili_url, settings.meili_master_key)
         index = client.index("documents")
         
-        task = index.add_documents([document])
+        task = index.add_documents([document], primary_key="id")
         
         logger.info(f"文档已添加到索引: file_id={file_id}, task_uid={task.task_uid}")
         

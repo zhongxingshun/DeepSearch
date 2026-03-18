@@ -21,7 +21,7 @@ alembic>=1.13.1
 # ============================================
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-bcrypt>=4.1.2
+bcrypt>=4.1.2,<5
 
 # ============================================
 # Validation
@@ -48,6 +48,8 @@ meilisearch>=0.31.0
 kreuzberg>=3.22.0
 python-magic>=0.4.27
 Pillow>=10.2.0
+paddlepaddle==3.0.0
+paddleocr==3.0.3
 
 # ============================================
 # HTTP Client
