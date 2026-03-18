@@ -21,7 +21,7 @@
 |------|------|
 | 🔍 **全文搜索** | 基于 Meilisearch 的亚秒级全文检索，支持关键词高亮 |
 | 📄 **多格式支持** | PDF、Word、Excel、PPT、图片、文本等 16+ 种格式 |
-| 🎯 **OCR 识别** | Tesseract 中英文 OCR，扫描件/图片自动文字提取 |
+| 🎯 **OCR 识别** | PaddleOCR (PP-OCRv5) 高精度中英文 OCR，扫描件/图片自动文字提取 |
 | �️ **文件预览** | 图片内联显示、PDF 嵌入预览、文档摘要展示 |
 | � **文件夹管理** | 虚拟文件夹体系，支持层级导航、文件移动 |
 | ⚡ **异步处理** | Celery + Redis 任务队列，后台解析不阻塞 |
@@ -70,7 +70,7 @@
 | **数据库** | PostgreSQL 15 |
 | **缓存/队列** | Redis 7 |
 | **任务** | Celery 5 (Worker + Beat) |
-| **OCR** | Tesseract + kreuzberg |
+| **OCR** | PaddleOCR 3.x (PP-OCRv5) + kreuzberg |
 | **部署** | Docker + Nginx |
 
 ---
@@ -302,7 +302,164 @@ DeepSearch/
 
 ---
 
+## ⚠️ 踩坑记录与注意事项
+
+> **以下是实际部署中遇到的关键问题，升级或运维前务必阅读。**
+
+### 1. PaddleOCR 依赖链（极其重要）
+
+PaddleOCR 3.x 的依赖链非常脆弱，版本必须严格锁定：
+
+```
+paddlepaddle==3.0.0
+paddlex<3.2          # ≥3.2 改了 PaddlePredictorOption 构造函数，与 paddleocr 3.0.x 不兼容
+paddleocr==3.0.3
+langchain<0.3        # paddlex 3.1.x 依赖 langchain.docstore，该模块在 langchain 0.3 中被移除
+langchain-community<0.3
+```
+
+**可能遇到的报错**：
+
+| 报错 | 原因 |
+|------|------|
+| `PaddlePredictorOption.__init__() takes 1 positional argument` | paddlex ≥ 3.2，需降级到 < 3.2 |
+| `No module named 'langchain.docstore'` | langchain ≥ 0.3，需降级到 < 0.3 |
+| `Illegal instruction (SIGILL)` | paddlepaddle 2.6.x 的推理优化 pass 不兼容某些 CPU，换用 3.0.0 |
+
+**升级任何一个 paddle 相关包前，务必先在服务器上测试，不要只在本地验证。**
+
+### 2. Meilisearch add_documents 必须指定 primary_key
+
+```python
+# ❌ 错误 — 文档有 id 和 file_id 两个字段，Meilisearch 无法推断主键，静默失败
+index.add_documents([document])
+
+# ✅ 正确
+index.add_documents([document], primary_key="id")
+```
+
+**现象**：数据库 `files.index_status` 全部显示 `completed`，但搜索返回空。因为 `add_documents` 是异步的，Python 调用返回 `task_uid` 后代码就标记成功了，但 Meilisearch 后台实际处理失败。
+
+**排查**：
+
+```bash
+# 检查 Meilisearch 失败的任务
+docker exec deepsearch-backend curl -s \
+  'http://meilisearch:7700/tasks?statuses=failed&limit=5' \
+  -H 'Authorization: Bearer <MEILI_MASTER_KEY>'
+```
+
+### 3. Dockerfile 中 PaddleOCR 所需系统库
+
+缺少以下库会导致 `import cv2` 或 PaddleOCR 运行时 segfault：
+
+```dockerfile
+RUN apt-get install -y --no-install-recommends \
+    libglib2.0-0 libsm6 libxext6 libxrender1 libgl1 libgomp1
+```
+
+同时需要为非 root 用户创建 home 目录（PaddleOCR 首次运行下载模型到 `~/.paddleocr/`）：
+
+```dockerfile
+RUN useradd -r -g deepsearch -m -d /home/deepsearch deepsearch && \
+    mkdir -p /home/deepsearch/.paddlex /home/deepsearch/.paddleocr
+ENV HOME=/home/deepsearch
+```
+
+### 4. docker compose build 只构建指定 service
+
+`docker compose build backend` **不会**自动构建 celery-worker，即使它们共用同一个 Dockerfile。修改 requirements.txt 或 Dockerfile 后必须：
+
+```bash
+docker compose build --parallel backend celery-worker
+docker compose up -d --force-recreate backend celery-worker celery-beat
+```
+
+### 5. bcrypt 版本锁定
+
+`bcrypt>=5.0` 改了 API，与 `passlib` 不兼容。必须锁定 `bcrypt>=4.1.2,<5`。
+
+---
+
+## 🔧 运维常用命令
+
+### 检查搜索是否正常
+
+```bash
+# 1. 文件状态分布（正常应全部 completed）
+docker exec deepsearch-postgres psql -U deepsearch -d deepsearch \
+  -c "SELECT index_status, COUNT(*) FROM files GROUP BY index_status;"
+
+# 2. Meilisearch 文档数（应与 files 表 completed 数一致）
+docker exec deepsearch-backend curl -s \
+  'http://meilisearch:7700/indexes/documents/stats' \
+  -H 'Authorization: Bearer <MEILI_MASTER_KEY>'
+
+# 3. Meilisearch 是否有失败任务
+docker exec deepsearch-backend curl -s \
+  'http://meilisearch:7700/tasks?statuses=failed&limit=5' \
+  -H 'Authorization: Bearer <MEILI_MASTER_KEY>'
+
+# 4. OCR 是否正常工作
+docker logs deepsearch-celery-worker 2>&1 | grep -E 'OCR|paddle|失败' | tail -20
+```
+
+### 清空所有数据重新开始
+
+```bash
+# 删除 Meilisearch 索引
+docker exec deepsearch-backend curl -s -X DELETE \
+  'http://meilisearch:7700/indexes/documents' \
+  -H 'Authorization: Bearer <MEILI_MASTER_KEY>'
+
+# 清空数据库
+docker exec deepsearch-postgres psql -U deepsearch -d deepsearch \
+  -c "TRUNCATE tasks, files RESTART IDENTITY CASCADE;"
+
+# 清空存储文件
+docker exec deepsearch-celery-worker rm -rf /data/files/*
+```
+
+### 重新索引所有文件
+
+当文件已在数据库但需要重新 OCR + 索引时：
+
+```bash
+# 1. 重置状态
+docker exec deepsearch-postgres psql -U deepsearch -d deepsearch \
+  -c "UPDATE files SET index_status = 'pending', meilisearch_id = NULL;"
+
+# 2. 创建触发脚本
+cat > /tmp/reindex.py << 'EOF'
+from sqlalchemy import text
+from app.tasks.db_engine import sync_engine
+from app.tasks.parse_task import parse_document
+engine = sync_engine
+with engine.connect() as conn:
+    rows = conn.execute(text("SELECT id, file_path, file_type FROM files WHERE index_status = :s"), {"s": "pending"}).fetchall()
+    print(f"Found {len(rows)} pending files")
+    for row in rows:
+        parse_document.delay(file_id=row[0], file_path=row[1], file_type=row[2])
+    print(f"Dispatched {len(rows)} parse tasks")
+EOF
+
+# 3. 执行
+docker cp /tmp/reindex.py deepsearch-celery-worker:/tmp/reindex.py
+docker exec -w /app -e PYTHONPATH=/app deepsearch-celery-worker python /tmp/reindex.py
+```
+
+---
+
 ## 📝 更新日志
+
+### v1.0.1 (2026-03-18)
+
+- 🐛 修复搜索不可用：OCR 依赖缺失 + Meilisearch 主键未指定
+- 🐛 修复 PaddleOCR 依赖链：锁定 paddlex < 3.2、langchain < 0.3
+- 🐛 修复 PaddlePaddle 2.6.x SIGILL 崩溃，改用 3.0.0
+- 🐛 修复 Dockerfile 缺少 OCR 系统库 (libgl1 等)
+- ⚡ Nginx 上传接口单独放宽限流
+- 📝 添加部署文档和远程部署脚本
 
 ### v1.0.0 (2026-02-10)
 
