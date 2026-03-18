@@ -49,6 +49,7 @@ kreuzberg>=3.22.0
 python-magic>=0.4.27
 Pillow>=10.2.0
 paddlepaddle==3.0.0
+paddlex<3.2
 paddleocr==3.0.3
 
 # ============================================
