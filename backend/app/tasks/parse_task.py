@@ -184,33 +184,31 @@ def _get_paddleocr():
     """获取 PaddleOCR 单例（轻量版，节省内存）"""
     global _paddle_ocr_instance
     if _paddle_ocr_instance is None:
-        import os
-        os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
         from paddleocr import PaddleOCR
         _paddle_ocr_instance = PaddleOCR(
+            use_angle_cls=True,
             lang='ch',
-            # 使用 mobile 轻量模型，内存仅 ~300M（server 版需 ~2G）
-            text_detection_model_name='PP-OCRv5_mobile_det',
-            text_recognition_model_name='PP-OCRv5_mobile_rec',
-            # 关闭不必要的预处理模型，节省 ~400M 内存
-            use_doc_orientation_classify=False,  # 不需要文档方向分类
-            use_doc_unwarping=False,              # 不需要文档去扭曲
-            use_textline_orientation=False,        # 不需要文字行方向检测
+            use_gpu=False,
+            show_log=False,
         )
-        logger.info("PaddleOCR 初始化完成（mobile 轻量模型）")
+        logger.info("PaddleOCR 初始化完成")
     return _paddle_ocr_instance
 
 
 def _paddleocr_file(file_path: str) -> str:
     """用 PaddleOCR 直接识别单个图片/文件"""
     ocr = _get_paddleocr()
-    results = ocr.predict(file_path)
-    
+    results = ocr.ocr(file_path, cls=True)
+
     all_texts = []
-    for res in results:
-        if 'rec_texts' in res and res['rec_texts']:
-            all_texts.extend(res['rec_texts'])
-    
+    if results:
+        for page in results:
+            if page:
+                for line in page:
+                    # line = [box_coords, (text, confidence)]
+                    if line and len(line) >= 2 and line[1]:
+                        all_texts.append(line[1][0])
+
     return "\n".join(all_texts)
 
 
