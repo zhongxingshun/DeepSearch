@@ -29,7 +29,12 @@
         </el-table-column>
         <el-table-column label="操作" width="180">
           <template #default="{ row }">
-            <el-button size="small" link @click="toggleStatus(row)">
+            <el-button
+              size="small"
+              link
+              :disabled="isCurrentUser(row)"
+              @click="toggleStatus(row)"
+            >
               {{ row.is_active ? '禁用' : '启用' }}
             </el-button>
             <el-button size="small" link @click="resetPassword(row)">重置密码</el-button>
@@ -68,13 +73,16 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import http from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import dayjs from 'dayjs'
+import type { User } from '@/types'
 
 const loading = ref(false)
 const showDialog = ref(false)
 const formRef = ref<FormInstance>()
-const users = ref<any[]>([])
+const users = ref<User[]>([])
+const authStore = useAuthStore()
 
 const form = reactive({
   username: '',
@@ -122,6 +130,11 @@ const handleSubmit = async () => {
 }
 
 const toggleStatus = async (user: any) => {
+  if (isCurrentUser(user)) {
+    ElMessage.warning('不能禁用当前登录账号')
+    return
+  }
+
   try {
     await http.put(`/admin/users/${user.id}/status`, { is_active: !user.is_active })
     ElMessage.success('操作成功')
@@ -141,6 +154,7 @@ const resetPassword = async (user: any) => {
 }
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
+const isCurrentUser = (user: User) => user.id === authStore.user?.id
 
 onMounted(() => loadUsers())
 </script>

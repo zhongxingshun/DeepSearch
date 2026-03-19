@@ -94,6 +94,7 @@ async def create_user(req: CreateUserRequest, db: AsyncSession = Depends(get_db)
 async def update_user_status(
     user_id: int,
     req: UpdateStatusRequest,
+    current_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """启用/禁用用户"""
@@ -101,6 +102,9 @@ async def update_user_status(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    if user.id == current_user.id and not req.is_active:
+        raise HTTPException(status_code=400, detail="不能禁用当前登录账号")
 
     user.is_active = req.is_active
     await db.commit()
