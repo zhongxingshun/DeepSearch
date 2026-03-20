@@ -3,6 +3,9 @@
     <div class="page-header">
       <h1>文件管理</h1>
       <div class="header-actions">
+        <el-button type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
+          新建文件夹
+        </el-button>
         <el-button type="primary" :icon="Upload" @click="showUpload = true">
           上传文件
         </el-button>
@@ -99,6 +102,15 @@
           <div class="subfolder-name">{{ folder.name }}</div>
           <div class="subfolder-count">{{ folder.file_count }} 个文件</div>
         </div>
+        <el-button
+          class="subfolder-delete"
+          link
+          type="danger"
+          :icon="Delete"
+          @click.stop="deleteFolder(folder)"
+        >
+          删除
+        </el-button>
       </div>
     </div>
     
@@ -341,6 +353,26 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showCreateFolder" title="新建文件夹" width="420px">
+      <el-form label-width="90px">
+        <el-form-item label="父目录">
+          <span>{{ currentFolder }}</span>
+        </el-form-item>
+        <el-form-item label="文件夹名">
+          <el-input
+            v-model="newFolderName"
+            placeholder="请输入文件夹名称"
+            maxlength="100"
+            @keyup.enter="handleCreateFolder"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateFolder = false">取消</el-button>
+        <el-button type="primary" @click="handleCreateFolder">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -354,6 +386,7 @@ import {
   Upload, Folder, Search, Refresh, Loading, Warning, Document,
   Picture, Tickets, UploadFilled, FolderOpened,
   CircleCheckFilled, CircleCloseFilled, RefreshRight, HomeFilled,
+  FolderAdd, Delete,
 } from '@element-plus/icons-vue'
 
 const loading = ref(false)
@@ -371,6 +404,8 @@ const uploadFileList = ref<any[]>([])
 const currentFolder = ref<string>('/')
 const subfolders = ref<any[]>([])
 const allFolders = ref<any[]>([])
+const showCreateFolder = ref(false)
+const newFolderName = ref('')
 
 // 面包屑
 const breadcrumbSegments = computed(() => {
@@ -455,6 +490,11 @@ const loadAllFolders = async () => {
   } catch {
     allFolders.value = []
   }
+}
+
+const openCreateFolderDialog = () => {
+  newFolderName.value = ''
+  showCreateFolder.value = true
 }
 
 // 加载文件列表
@@ -659,6 +699,53 @@ const handleMoveFile = async () => {
     loadSubfolders()
   } catch {
     ElMessage.error('移动失败')
+  }
+}
+
+const handleCreateFolder = async () => {
+  const trimmedName = newFolderName.value.trim().replace(/^\/+|\/+$/g, '')
+  if (!trimmedName) {
+    ElMessage.warning('请输入文件夹名称')
+    return
+  }
+  if (trimmedName.includes('/')) {
+    ElMessage.warning('文件夹名称不能包含 /')
+    return
+  }
+
+  const targetPath = currentFolder.value === '/'
+    ? `/${trimmedName}`
+    : `${currentFolder.value}/${trimmedName}`
+
+  try {
+    await fileApi.createFolder(targetPath)
+    ElMessage.success(`已创建文件夹 ${targetPath}`)
+    showCreateFolder.value = false
+    loadSubfolders()
+    loadAllFolders()
+  } catch {
+    ElMessage.error('创建文件夹失败')
+  }
+}
+
+const deleteFolder = async (folder: { path: string; name: string }) => {
+  await ElMessageBox.confirm(
+    `确定要删除文件夹 "${folder.name}" 吗？仅支持删除空文件夹。`,
+    '删除文件夹',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+
+  try {
+    await fileApi.deleteFolder(folder.path)
+    ElMessage.success('文件夹删除成功')
+    loadSubfolders()
+    loadAllFolders()
+  } catch {
+    ElMessage.error('删除文件夹失败')
   }
 }
 

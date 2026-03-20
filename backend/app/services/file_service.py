@@ -4,6 +4,7 @@
 """
 
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
 
 from fastapi import UploadFile
@@ -22,6 +23,43 @@ class FileService:
     def __init__(self, db: AsyncSession, storage: Optional[FileStorageService] = None):
         self.db = db
         self.storage = storage or file_storage
+
+    @staticmethod
+    def normalize_folder_path(folder_path: str) -> str:
+        """规范化文件夹路径"""
+        return FileStorageService.normalize_folder_path(folder_path)
+
+    @staticmethod
+    def _folder_name(path: str) -> str:
+        if path == "/":
+            return "根目录"
+        return PurePosixPath(path).name or path
+
+    @staticmethod
+    def _collect_ancestor_paths(path: str) -> list[str]:
+        normalized = FileService.normalize_folder_path(path)
+        if normalized == "/":
+            return ["/"]
+
+        parts = [part for part in normalized.split("/") if part]
+        ancestors = ["/"]
+        for idx in range(len(parts)):
+            ancestors.append("/" + "/".join(parts[: idx + 1]))
+        return ancestors
+
+    async def _folder_file_counts(self) -> dict[str, int]:
+        result = await self.db.execute(
+            select(File.folder_path, func.count(File.id).label("cnt"))
+            .group_by(File.folder_path)
+            .order_by(File.folder_path)
+        )
+
+        counts: dict[str, int] = {"/": 0}
+        for path, count in result.all():
+            normalized = self.normalize_folder_path(path)
+            for ancestor in self._collect_ancestor_paths(normalized):
+                counts[ancestor] = counts.get(ancestor, 0) + count
+        return counts
 
     async def upload_file(
         self,
@@ -67,11 +105,10 @@ class FileService:
         
         # 确定文件夹路径：优先使用指定的 target_folder
         if target_folder:
-            folder_path = target_folder if target_folder.startswith("/") else "/" + target_folder
-            folder_path = folder_path.rstrip("/") or "/"
+            folder_path = self.normalize_folder_path(target_folder)
         elif "/" in file.filename:
             folder_part = file.filename.rsplit("/", 1)[0]
-            folder_path = "/" + folder_part if not folder_part.startswith("/") else folder_part
+            folder_path = self.normalize_folder_path(folder_part)
         else:
             folder_path = "/"
         
@@ -332,24 +369,15 @@ class FileService:
 
     async def get_folders(self) -> list:
         """获取所有文件夹路径及其文件数"""
-        from sqlalchemy import distinct
-        
-        result = await self.db.execute(
-            select(File.folder_path, func.count(File.id).label('cnt'))
-            .group_by(File.folder_path)
-            .order_by(File.folder_path)
-        )
-        rows = result.all()
-        
+        counts = await self._folder_file_counts()
+        all_paths = set(counts.keys()) | set(self.storage.list_virtual_folders())
+
         folders = []
-        for path, count in rows:
-            name = path.rsplit('/', 1)[-1] if '/' in path and path != '/' else path
-            if path == '/':
-                name = '根目录'
+        for path in sorted(all_paths):
             folders.append({
-                'path': path,
-                'name': name,
-                'file_count': count,
+                "path": path,
+                "name": self._folder_name(path),
+                "file_count": counts.get(path, 0),
             })
         return folders
 
@@ -360,11 +388,9 @@ class FileService:
             raise ValueError("文件不存在")
         
         # 规范化目标文件夹路径
-        if not target_folder.startswith('/'):
-            target_folder = '/' + target_folder
-        target_folder = target_folder.rstrip('/')
-        if not target_folder:
-            target_folder = '/'
+        target_folder = self.normalize_folder_path(target_folder)
+
+        self.storage.create_virtual_folder(target_folder)
         
         file.folder_path = target_folder
         await self.db.commit()
@@ -373,30 +399,63 @@ class FileService:
 
     async def get_subfolders(self, parent_path: str) -> list:
         """获取指定路径下的直接子文件夹"""
-        prefix = parent_path.rstrip('/') + '/' if parent_path != '/' else '/'
-        
-        result = await self.db.execute(
-            select(File.folder_path, func.count(File.id).label('cnt'))
-            .where(File.folder_path.like(f'{prefix}%'))
-            .group_by(File.folder_path)
-            .order_by(File.folder_path)
-        )
-        rows = result.all()
-        
-        # 提取直接子文件夹（不包含更深层级）
-        subfolders = {}
-        for path, count in rows:
-            # 取父路径后的第一个段
+        normalized_parent = self.normalize_folder_path(parent_path)
+        prefix = normalized_parent.rstrip("/") + "/" if normalized_parent != "/" else "/"
+        counts = await self._folder_file_counts()
+        all_paths = set(counts.keys()) | set(self.storage.list_virtual_folders())
+
+        subfolders: dict[str, dict] = {}
+        for path in all_paths:
+            if path in {"/", normalized_parent} or not path.startswith(prefix):
+                continue
+
             relative = path[len(prefix):]
-            if '/' in relative:
-                direct_child = relative.split('/')[0]
-            else:
-                direct_child = relative
-            
-            if direct_child:
-                folder_full_path = prefix + direct_child
-                if folder_full_path not in subfolders:
-                    subfolders[folder_full_path] = {'path': folder_full_path, 'name': direct_child, 'file_count': 0}
-                subfolders[folder_full_path]['file_count'] += count
-        
-        return list(subfolders.values())
+            if not relative:
+                continue
+
+            direct_child = relative.split("/")[0]
+            folder_full_path = prefix + direct_child
+            subfolders[folder_full_path] = {
+                "path": folder_full_path,
+                "name": direct_child,
+                "file_count": counts.get(folder_full_path, 0),
+            }
+
+        return sorted(subfolders.values(), key=lambda item: item["path"])
+
+    async def create_folder(self, folder_path: str) -> dict:
+        """创建空文件夹"""
+        normalized = self.normalize_folder_path(folder_path)
+        if normalized == "/":
+            raise ValueError("根目录无需创建")
+
+        self.storage.create_virtual_folder(normalized)
+        return {
+            "path": normalized,
+            "name": self._folder_name(normalized),
+            "file_count": 0,
+        }
+
+    async def delete_folder(self, folder_path: str) -> None:
+        """删除空文件夹"""
+        normalized = self.normalize_folder_path(folder_path)
+        if normalized == "/":
+            raise ValueError("根目录不允许删除")
+
+        existing_files = await self.db.execute(
+            select(func.count(File.id)).where(
+                (File.folder_path == normalized)
+                | (File.folder_path.like(f"{normalized}/%"))
+            )
+        )
+        if (existing_files.scalar() or 0) > 0:
+            raise ValueError("文件夹非空，无法删除")
+
+        virtual_subfolders = [
+            path for path in self.storage.list_virtual_folders()
+            if path.startswith(f"{normalized}/")
+        ]
+        if virtual_subfolders:
+            raise ValueError("文件夹存在子文件夹，无法删除")
+
+        self.storage.delete_virtual_folder(normalized)

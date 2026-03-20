@@ -19,6 +19,7 @@ from app.schemas.file import (
     FileStatusResponse,
     FileUploadResponse,
     FileMoveRequest,
+    FolderCreateRequest,
     FolderInfo,
     FolderListResponse,
 )
@@ -243,6 +244,52 @@ async def list_folders(
     return FolderListResponse(
         folders=[FolderInfo(**f) for f in folders],
         current_path=parent or "/",
+    )
+
+
+@router.post("/folders", response_model=ResponseBase)
+async def create_folder(
+    body: FolderCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建空文件夹"""
+    file_service = FileService(db)
+
+    try:
+        folder = await file_service.create_folder(body.path)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    return ResponseBase(
+        success=True,
+        message=f"文件夹创建成功: {folder['path']}",
+    )
+
+
+@router.delete("/folders", response_model=ResponseBase)
+async def delete_folder(
+    path: str = Query(..., description="文件夹路径"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除空文件夹"""
+    file_service = FileService(db)
+
+    try:
+        await file_service.delete_folder(path)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    return ResponseBase(
+        success=True,
+        message="文件夹删除成功",
     )
 
 

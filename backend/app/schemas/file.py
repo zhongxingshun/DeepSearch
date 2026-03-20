@@ -94,3 +94,8 @@ class FolderListResponse(BaseModel):
     success: bool = True
     folders: List[FolderInfo]
     current_path: str = "/"
+
+
+class FolderCreateRequest(BaseModel):
+    """创建文件夹请求"""
+    path: str = Field(..., description="文件夹路径")

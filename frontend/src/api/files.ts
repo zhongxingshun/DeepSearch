@@ -121,6 +121,20 @@ export const fileApi = {
     },
 
     /**
+     * 创建文件夹
+     */
+    async createFolder(path: string): Promise<any> {
+        return http.post('/files/folders', { path })
+    },
+
+    /**
+     * 删除文件夹
+     */
+    async deleteFolder(path: string): Promise<any> {
+        return http.delete('/files/folders', { params: { path } })
+    },
+
+    /**
      * 移动文件到指定文件夹
      */
     async moveFile(id: number, targetFolder: string): Promise<any> {

@@ -22,15 +22,69 @@ class FileStorageService:
 
     def __init__(self, base_path: Optional[str] = None):
         self.base_path = Path(base_path or settings.file_storage_path)
+        self.virtual_folder_root = self.base_path / ".folders"
         self._ensure_base_directories()
 
     def _ensure_base_directories(self) -> None:
         """确保基础目录存在（256个分桶目录）"""
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.virtual_folder_root.mkdir(parents=True, exist_ok=True)
         # 创建 00-ff 共 256 个子目录
         for i in range(256):
             bucket = f"{i:02x}"
             (self.base_path / bucket).mkdir(exist_ok=True)
+
+    @staticmethod
+    def normalize_folder_path(folder_path: str) -> str:
+        """规范化虚拟文件夹路径"""
+        cleaned = (folder_path or "").strip()
+        if not cleaned:
+            return "/"
+        if not cleaned.startswith("/"):
+            cleaned = "/" + cleaned
+        cleaned = cleaned.rstrip("/")
+        return cleaned or "/"
+
+    def get_virtual_folder_disk_path(self, folder_path: str) -> Path:
+        """获取虚拟文件夹在磁盘上的路径"""
+        normalized = self.normalize_folder_path(folder_path)
+        if normalized == "/":
+            return self.virtual_folder_root
+        relative_parts = [part for part in normalized.split("/") if part]
+        return self.virtual_folder_root.joinpath(*relative_parts)
+
+    def create_virtual_folder(self, folder_path: str) -> str:
+        """创建虚拟文件夹"""
+        normalized = self.normalize_folder_path(folder_path)
+        self.get_virtual_folder_disk_path(normalized).mkdir(parents=True, exist_ok=True)
+        return normalized
+
+    def delete_virtual_folder(self, folder_path: str) -> None:
+        """删除虚拟文件夹（仅空目录）"""
+        normalized = self.normalize_folder_path(folder_path)
+        if normalized == "/":
+            raise ValueError("根目录不允许删除")
+
+        disk_path = self.get_virtual_folder_disk_path(normalized)
+        if not disk_path.exists():
+            raise ValueError("文件夹不存在")
+        if any(disk_path.iterdir()):
+            raise ValueError("文件夹非空，无法删除")
+
+        disk_path.rmdir()
+
+    def list_virtual_folders(self) -> list[str]:
+        """列出所有虚拟文件夹路径"""
+        folders: list[str] = []
+        if not self.virtual_folder_root.exists():
+            return folders
+
+        for path in self.virtual_folder_root.rglob("*"):
+            if path.is_dir():
+                relative = path.relative_to(self.virtual_folder_root).as_posix()
+                folders.append("/" + relative if relative != "." else "/")
+
+        return sorted(set(folders))
 
     @staticmethod
     def calculate_md5(file: BinaryIO, chunk_size: int = 8192) -> str:
