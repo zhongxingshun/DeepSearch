@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.core.database import init_db, close_db
+from app.core.database import close_db, ensure_schema_compatibility, init_db
 from app.api import auth, search, files, history, admin, health
 
 
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
     print(f"Starting {settings.app_name} v{settings.app_version}")
+    await ensure_schema_compatibility()
     # 初始化数据库连接
     # await init_db()  # 使用 Alembic 管理迁移
     yield

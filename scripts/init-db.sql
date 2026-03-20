@@ -43,11 +43,19 @@ CREATE TABLE IF NOT EXISTS tasks (
     celery_task_id VARCHAR(64),
     priority VARCHAR(20) DEFAULT 'low',
     status VARCHAR(20) DEFAULT 'pending',
+    retry_count INTEGER DEFAULT 0,
     error_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE
 );
+
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
+
+UPDATE tasks
+SET retry_count = 0
+WHERE retry_count IS NULL;
 
 -- 创建搜索历史表
 CREATE TABLE IF NOT EXISTS search_history (

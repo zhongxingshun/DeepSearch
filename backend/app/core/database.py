@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
+from sqlalchemy import text
 
 from app.config import settings
 
@@ -61,6 +62,36 @@ async def init_db() -> None:
     """初始化数据库（创建所有表）"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def ensure_schema_compatibility() -> None:
+    """补齐运行所需的兼容字段，避免旧初始化脚本造成运行失败。"""
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE tasks
+                ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE tasks
+                SET retry_count = 0
+                WHERE retry_count IS NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE tasks
+                ALTER COLUMN retry_count SET DEFAULT 0
+                """
+            )
+        )
 
 
 async def close_db() -> None:
