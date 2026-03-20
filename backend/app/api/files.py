@@ -107,11 +107,24 @@ async def upload_files_batch(
     file_service = FileService(db)
     results = await file_service.upload_files(files, current_user.id)
     
-    success_count = sum(1 for r in results if r.get("success"))
+    success_count = sum(
+        1 for r in results if r.get("success") and not r.get("is_duplicate")
+    )
+    duplicate_count = sum(1 for r in results if r.get("is_duplicate"))
+    fail_count = sum(1 for r in results if not r.get("success"))
+
+    message_parts = [f"新增 {success_count} 个文件"]
+    if duplicate_count > 0:
+        message_parts.append(f"{duplicate_count} 个重复文件已跳过")
+    if fail_count > 0:
+        message_parts.append(f"{fail_count} 个文件上传失败")
     
     return {
         "success": True,
-        "message": f"上传完成: {success_count}/{len(files)} 个文件成功",
+        "message": "上传完成：" + "，".join(message_parts),
+        "uploaded_count": success_count,
+        "duplicate_count": duplicate_count,
+        "failed_count": fail_count,
         "results": results,
     }
 
