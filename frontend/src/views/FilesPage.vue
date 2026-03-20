@@ -287,9 +287,33 @@
         <el-icon :size="20" color="#409eff"><FolderOpened /></el-icon>
         <span class="folder-name">{{ folderName }}</span>
         <el-tag size="small" type="info">{{ folderFiles.length }} 个文件</el-tag>
-        <el-tag v-if="skippedCount > 0" size="small" type="warning">
-          {{ skippedCount }} 个已跳过
-        </el-tag>
+        <el-popover
+          v-if="skippedCount > 0"
+          placement="bottom"
+          :width="260"
+          trigger="click"
+        >
+          <template #reference>
+            <el-tag size="small" type="warning" class="skipped-tag">
+              {{ skippedCount }} 个已跳过
+            </el-tag>
+          </template>
+          <div class="skipped-details">
+            <div class="skipped-title">跳过原因</div>
+            <div class="skipped-item">
+              <span>隐藏文件/临时文件</span>
+              <strong>{{ skippedStats.hidden }}</strong>
+            </div>
+            <div class="skipped-item">
+              <span>空文件</span>
+              <strong>{{ skippedStats.empty }}</strong>
+            </div>
+            <div class="skipped-item">
+              <span>格式不支持</span>
+              <strong>{{ skippedStats.unsupported }}</strong>
+            </div>
+          </div>
+        </el-popover>
       </div>
       
       <div class="folder-file-list">
@@ -439,6 +463,11 @@ const showFolderUpload = ref(false)
 const folderName = ref('')
 const folderFiles = ref<any[]>([])
 const skippedCount = ref(0)
+const skippedStats = reactive({
+  hidden: 0,
+  empty: 0,
+  unsupported: 0,
+})
 const folderUploading = ref(false)
 const folderProgress = ref(0)
 const folderUploadedCount = ref(0)
@@ -626,6 +655,9 @@ const handleFolderSelected = (event: Event) => {
   // 过滤支持的文件类型
   const validFiles: any[] = []
   let skipped = 0
+  skippedStats.hidden = 0
+  skippedStats.empty = 0
+  skippedStats.unsupported = 0
   
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i]
@@ -635,12 +667,14 @@ const handleFolderSelected = (event: Event) => {
     // 跳过隐藏文件和系统文件
     if (file.name.startsWith('.') || file.name.startsWith('~')) {
       skipped++
+      skippedStats.hidden++
       continue
     }
     
     // 跳过空文件
     if (file.size === 0) {
       skipped++
+      skippedStats.empty++
       continue
     }
     
@@ -653,6 +687,7 @@ const handleFolderSelected = (event: Event) => {
       })
     } else {
       skipped++
+      skippedStats.unsupported++
     }
   }
   
@@ -1141,6 +1176,30 @@ onMounted(() => {
   color: #e6a23c;
   font-size: 12px;
   font-weight: 600;
+}
+
+.skipped-tag {
+  cursor: pointer;
+}
+
+.skipped-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .skipped-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #303133;
+  }
+
+  .skipped-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #606266;
+  }
 }
 
 .file-name-cell {
