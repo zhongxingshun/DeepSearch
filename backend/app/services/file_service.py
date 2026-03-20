@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
 
 from fastapi import UploadFile
-from sqlalchemy import select, func, desc
+from sqlalchemy import delete, select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -293,20 +293,44 @@ class FileService:
             "updated_at": file.updated_at.isoformat(),
         }
 
+    async def _delete_file_records(self, file_ids: list[int]) -> tuple[list[int], list[int]]:
+        """显式删除任务和文件记录，避免触发 ORM 关系加载。"""
+        unique_ids = list(dict.fromkeys(file_ids))
+        if not unique_ids:
+            return [], []
+
+        result = await self.db.execute(
+            select(File.id, File.file_path).where(File.id.in_(unique_ids))
+        )
+        rows = result.all()
+
+        existing_map = {row.id: row.file_path for row in rows}
+        deleted_ids = [file_id for file_id in unique_ids if file_id in existing_map]
+        missing_ids = [file_id for file_id in unique_ids if file_id not in existing_map]
+
+        for file_id in deleted_ids:
+            await self.storage.delete_file(existing_map[file_id])
+
+        await self.db.execute(delete(Task).where(Task.file_id.in_(deleted_ids)))
+        await self.db.execute(delete(File).where(File.id.in_(deleted_ids)))
+        await self.db.commit()
+
+        return deleted_ids, missing_ids
+
     async def delete_file(self, file_id: int) -> bool:
         """删除文件（包括存储和数据库记录）"""
-        file = await self.get_file_by_id(file_id)
-        if not file:
-            return False
-        
-        # 删除存储中的文件
-        await self.storage.delete_file(file.file_path)
-        
-        # 删除数据库记录
-        await self.db.delete(file)
-        await self.db.commit()
-        
-        return True
+        deleted_ids, _ = await self._delete_file_records([file_id])
+        return bool(deleted_ids)
+
+    async def delete_files(self, file_ids: list[int]) -> dict:
+        """批量删除文件"""
+        deleted_ids, missing_ids = await self._delete_file_records(file_ids)
+
+        return {
+            "deleted_count": len(deleted_ids),
+            "deleted_ids": deleted_ids,
+            "missing_ids": missing_ids,
+        }
 
     async def update_index_status(
         self,

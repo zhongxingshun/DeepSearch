@@ -99,3 +99,8 @@ class FolderListResponse(BaseModel):
 class FolderCreateRequest(BaseModel):
     """创建文件夹请求"""
     path: str = Field(..., description="文件夹路径")
+
+
+class FileBatchDeleteRequest(BaseModel):
+    """批量删除文件请求"""
+    file_ids: List[int] = Field(..., min_length=1, description="待删除的文件 ID 列表")

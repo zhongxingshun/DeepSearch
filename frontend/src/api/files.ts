@@ -93,6 +93,13 @@ export const fileApi = {
     },
 
     /**
+     * 批量删除文件
+     */
+    async batchDeleteFiles(fileIds: number[]): Promise<any> {
+        return http.post('/files/batch-delete', { file_ids: fileIds })
+    },
+
+    /**
      * 获取文件统计
      */
     async getStats(): Promise<any> {

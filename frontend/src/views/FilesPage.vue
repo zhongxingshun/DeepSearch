@@ -143,14 +143,27 @@
         重试全部失败（{{ stats.by_status?.failed }}）
       </el-button>
     </div>
+
+    <div v-if="selectedFiles.length > 0" class="batch-bar card">
+      <span class="batch-summary">已选择 {{ selectedFiles.length }} 个文件</span>
+      <div class="batch-actions">
+        <el-button type="danger" :icon="Delete" @click="batchDeleteSelectedFiles">
+          批量删除
+        </el-button>
+        <el-button @click="clearSelection">清空选择</el-button>
+      </div>
+    </div>
     
     <!-- 文件列表 -->
     <el-table
+      ref="tableRef"
       v-loading="loading"
       :data="files"
       class="files-table"
       stripe
+      @selection-change="handleSelectionChange"
     >
+      <el-table-column type="selection" width="48" reserve-selection />
       <el-table-column label="文件名" min-width="250">
         <template #default="{ row }">
           <div class="file-name-cell">
@@ -379,7 +392,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { fileApi } from '@/api/files'
-import { ElMessage, ElMessageBox, type UploadInstance } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadInstance, type TableInstance } from 'element-plus'
 import dayjs from 'dayjs'
 import type { FileItem } from '@/types'
 import {
@@ -392,10 +405,12 @@ import {
 const loading = ref(false)
 const uploading = ref(false)
 const showUpload = ref(false)
+const tableRef = ref<TableInstance>()
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const files = ref<FileItem[]>([])
+const selectedFiles = ref<FileItem[]>([])
 const stats = ref<any>({})
 const uploadRef = ref<UploadInstance>()
 const uploadFileList = ref<any[]>([])
@@ -513,6 +528,7 @@ const loadFiles = async () => {
     const response = await fileApi.getFiles(params)
     files.value = response.data
     total.value = response.total
+    selectedFiles.value = []
   } catch {
     ElMessage.error('加载文件列表失败')
   } finally {
@@ -812,6 +828,49 @@ const deleteFile = async (file: FileItem) => {
   }
 }
 
+const handleSelectionChange = (selection: FileItem[]) => {
+  selectedFiles.value = selection
+}
+
+const clearSelection = () => {
+  tableRef.value?.clearSelection()
+  selectedFiles.value = []
+}
+
+const batchDeleteSelectedFiles = async () => {
+  if (selectedFiles.value.length === 0) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+
+  await ElMessageBox.confirm(
+    `确定要删除选中的 ${selectedFiles.value.length} 个文件吗？`,
+    '批量删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+
+  try {
+    const res = await fileApi.batchDeleteFiles(selectedFiles.value.map((file) => file.id))
+    const deletedCount = res.data?.deleted_count || 0
+    const missingCount = res.data?.missing_ids?.length || 0
+    ElMessage.success(
+      missingCount > 0
+        ? `已删除 ${deletedCount} 个文件，${missingCount} 个文件不存在`
+        : `已删除 ${deletedCount} 个文件`
+    )
+    clearSelection()
+    loadFiles()
+    loadStats()
+    loadSubfolders()
+  } catch {
+    ElMessage.error('批量删除失败')
+  }
+}
+
 const getFileIcon = (type: string) => {
   const icons: Record<string, any> = {
     image: Picture,
@@ -984,6 +1043,8 @@ onMounted(() => {
   }
 
   .subfolder-info {
+    flex: 1;
+
     .subfolder-name {
       font-weight: 600;
       font-size: 14px;
@@ -998,11 +1059,35 @@ onMounted(() => {
   }
 }
 
+.subfolder-delete {
+  opacity: 0.8;
+}
+
 .filter-bar {
   display: flex;
   gap: 12px;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+
+  .batch-summary {
+    color: #9a3412;
+    font-weight: 600;
+  }
+
+  .batch-actions {
+    display: flex;
+    gap: 8px;
+  }
 }
 
 .files-table {

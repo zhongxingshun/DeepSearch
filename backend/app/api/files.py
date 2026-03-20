@@ -18,6 +18,7 @@ from app.schemas.file import (
     FileListResponse,
     FileStatusResponse,
     FileUploadResponse,
+    FileBatchDeleteRequest,
     FileMoveRequest,
     FolderCreateRequest,
     FolderInfo,
@@ -491,6 +492,23 @@ async def delete_file(
         )
     
     return ResponseBase(message="文件删除成功")
+
+
+@router.post("/batch-delete", response_model=ResponseBase)
+async def batch_delete_files(
+    body: FileBatchDeleteRequest,
+    current_user: User = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量删除文件（仅管理员）"""
+    file_service = FileService(db)
+    result = await file_service.delete_files(body.file_ids)
+
+    return ResponseBase(
+        success=True,
+        message=f"已删除 {result['deleted_count']} 个文件",
+        data=result,
+    )
 
 
 @router.get("/stats/overview")
