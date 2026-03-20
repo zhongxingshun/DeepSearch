@@ -293,6 +293,45 @@ class FileService:
             "updated_at": file.updated_at.isoformat(),
         }
 
+    async def retry_file_processing(self, file_id: int) -> str:
+        """重新提交文件解析任务。"""
+        file = await self.get_file_by_id(file_id)
+        if not file:
+            raise ValueError("文件不存在")
+
+        full_path = await self.storage.get_file(file.file_path)
+        if not full_path:
+            raise ValueError("源文件不存在，无法重新上传")
+
+        file.index_status = "pending"
+        file.meilisearch_id = None
+
+        task = Task(
+            file_id=file.id,
+            task_type="parse",
+            priority="low",
+            status="pending",
+        )
+        self.db.add(task)
+        await self.db.flush()
+
+        try:
+            from app.tasks.parse_task import parse_document
+
+            celery_result = parse_document.delay(
+                file_id=file.id,
+                file_path=file.file_path,
+                file_type=file.file_type,
+            )
+            task.celery_task_id = celery_result.id
+            await self.db.commit()
+            return celery_result.id
+        except Exception as exc:
+            task.status = "failed"
+            task.error_message = f"任务提交失败: {exc}"
+            await self.db.commit()
+            raise ValueError("重新上传任务提交失败") from exc
+
     async def _delete_file_records(self, file_ids: list[int]) -> tuple[list[int], list[int]]:
         """显式删除任务和文件记录，避免触发 ORM 关系加载。"""
         unique_ids = list(dict.fromkeys(file_ids))

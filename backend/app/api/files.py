@@ -528,53 +528,61 @@ async def get_file_stats(
 
 @router.post("/{file_id}/retry", response_model=ResponseBase)
 async def retry_file(
+    request: Request,
     file_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    重试解析失败的文件
-    
-    - 重置文件状态为 pending
-    - 重新派发 Celery 解析任务
+    重新提交失败文件
+
+    - 检查源文件是否仍在存储中
+    - 重置状态并创建新的解析任务
     """
-    from sqlalchemy import text
-    
     file_service = FileService(db)
+    audit_service = AuditService(db)
+    ip_address = get_client_ip(request)
     file = await file_service.get_file_by_id(file_id)
-    
+
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件不存在",
         )
-    
-    if file.index_status not in ("failed", "parsed", "completed", "pending"):
+
+    if file.index_status not in ("failed", "parsed"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"当前状态 '{file.index_status}' 不支持重试",
+            detail=f"当前状态 '{file.index_status}' 不支持重新上传",
         )
-    
-    # 重置文件状态
-    file.index_status = "pending"
-    await db.commit()
-    
-    # 重新派发解析任务
+
+    source_status = file.index_status
+
     try:
-        from app.tasks.parse_task import parse_document
-        celery_result = parse_document.delay(
-            file_id=file.id,
-            file_path=file.file_path,
-            file_type=file.file_type,
+        task_id = await file_service.retry_file_processing(file.id)
+        await audit_service.log_admin_action(
+            user_id=current_user.id,
+            action="retry_task",
+            target_type="file",
+            target_id=str(file.id),
+            ip_address=ip_address,
+            details={
+                "filename": file.filename,
+                "task_id": task_id,
+                "source_status": source_status,
+            },
         )
+        await db.commit()
+
         return ResponseBase(
             success=True,
-            message=f"已重新提交解析任务: {celery_result.id}",
+            message=f"已重新提交 \"{file.filename}\"",
+            data={"task_id": task_id},
         )
-    except Exception as e:
-        return ResponseBase(
-            success=False,
-            message=f"任务提交失败: {str(e)}",
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
         )
 
 

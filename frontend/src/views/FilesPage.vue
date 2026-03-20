@@ -226,7 +226,7 @@
             type="warning"
             @click="retryFile(row)"
           >
-            重试
+            {{ row.index_status === 'failed' ? '重新上传' : '重新处理' }}
           </el-button>
           <el-button size="small" link type="danger" @click="deleteFile(row)">
             删除
@@ -813,12 +813,11 @@ const deleteFolder = async (folder: { path: string; name: string }) => {
 // 重试单个文件
 const retryFile = async (file: FileItem) => {
   try {
-    await fileApi.retryFile(file.id)
-    ElMessage.success(`已重新提交 "${file.filename}" 的解析任务`)
-    loadFiles()
-    loadStats()
+    const res = await fileApi.retryFile(file.id)
+    ElMessage.success(res.message || `已重新提交 "${file.filename}"`)
+    refreshFilePageData()
   } catch {
-    ElMessage.error('重试失败')
+    ElMessage.error(file.index_status === 'failed' ? '重新上传失败' : '重新处理失败')
   }
 }
 
