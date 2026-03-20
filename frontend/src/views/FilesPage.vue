@@ -310,6 +310,7 @@
           <el-table-column label="状态" width="80" align="center">
             <template #default="{ row }">
               <el-icon v-if="row.status === 'success'" color="#67c23a" :size="16"><CircleCheckFilled /></el-icon>
+              <span v-else-if="row.status === 'duplicate'" class="status-duplicate">重复</span>
               <el-icon v-else-if="row.status === 'error'" color="#f56c6c" :size="16"><CircleCloseFilled /></el-icon>
               <el-icon v-else-if="row.status === 'uploading'" class="is-loading" color="#409eff" :size="16"><Loading /></el-icon>
               <span v-else class="status-pending">待传</span>
@@ -546,6 +547,12 @@ const loadStats = async () => {
   }
 }
 
+const refreshFilePageData = () => {
+  loadFiles()
+  loadStats()
+  loadSubfolders()
+}
+
 // 上传文件（普通）
 const handleUpload = async () => {
   if (!uploadFileList.value.length) {
@@ -555,26 +562,42 @@ const handleUpload = async () => {
   
   uploading.value = true
   let successCount = 0
+  let duplicateCount = 0
   let failCount = 0
   
   try {
     for (const item of uploadFileList.value) {
       try {
-        await fileApi.uploadFile(item.raw, undefined, currentFolder.value !== '/' ? currentFolder.value : undefined)
-        successCount++
+        const res = await fileApi.uploadFile(
+          item.raw,
+          undefined,
+          currentFolder.value !== '/' ? currentFolder.value : undefined
+        )
+
+        if (res.is_duplicate) {
+          duplicateCount++
+        } else {
+          successCount++
+        }
       } catch {
         failCount++
       }
     }
-    
-    if (successCount > 0) {
-      ElMessage.success(`成功上传 ${successCount} 个文件`)
+
+    if (successCount > 0 || duplicateCount > 0) {
       showUpload.value = false
       uploadFileList.value = []
-      loadFiles()
-      loadStats()
-      loadSubfolders()
+      refreshFilePageData()
     }
+
+    if (successCount > 0 && duplicateCount > 0) {
+      ElMessage.warning(`新增 ${successCount} 个文件，${duplicateCount} 个重复文件已跳过`)
+    } else if (successCount > 0) {
+      ElMessage.success(`成功上传 ${successCount} 个文件`)
+    } else if (duplicateCount > 0) {
+      ElMessage.warning(`${duplicateCount} 个重复文件已跳过，未新增文件`)
+    }
+
     if (failCount > 0) {
       ElMessage.warning(`${failCount} 个文件上传失败`)
     }
@@ -661,15 +684,26 @@ const handleFolderUpload = async () => {
   folderProgress.value = 0
   
   const totalFiles = folderFiles.value.length
+  let duplicateCount = 0
   
   for (let i = 0; i < totalFiles; i++) {
     const item = folderFiles.value[i]
     item.status = 'uploading'
     
     try {
-      await fileApi.uploadFile(item.file, undefined, currentFolder.value !== '/' ? currentFolder.value : undefined)
-      item.status = 'success'
-      folderUploadedCount.value++
+      const res = await fileApi.uploadFile(
+        item.file,
+        undefined,
+        currentFolder.value !== '/' ? currentFolder.value : undefined
+      )
+
+      if (res.is_duplicate) {
+        item.status = 'duplicate'
+        duplicateCount++
+      } else {
+        item.status = 'success'
+        folderUploadedCount.value++
+      }
     } catch {
       item.status = 'error'
       folderFailCount.value++
@@ -683,13 +717,22 @@ const handleFolderUpload = async () => {
   const successCount = folderUploadedCount.value
   const failCount = folderFailCount.value
   
-  if (successCount > 0) {
+  if (successCount > 0 || duplicateCount > 0) {
+    refreshFilePageData()
+  }
+
+  if (successCount > 0 && duplicateCount > 0) {
+    ElMessage.warning(
+      `文件夹上传完成：新增 ${successCount} 个，${duplicateCount} 个重复文件已跳过${failCount > 0 ? `，${failCount} 个失败` : ''}`
+    )
+  } else if (successCount > 0) {
     ElMessage.success(
       `文件夹上传完成：${successCount} 个成功${failCount > 0 ? `，${failCount} 个失败` : ''}`
     )
-    loadFiles()
-    loadStats()
-    loadSubfolders()
+  } else if (duplicateCount > 0) {
+    ElMessage.warning(
+      `文件夹上传完成：${duplicateCount} 个重复文件已跳过${failCount > 0 ? `，${failCount} 个失败` : ''}`
+    )
   } else {
     ElMessage.error('所有文件上传失败')
   }
@@ -1093,6 +1136,12 @@ onMounted(() => {
 .files-table {
   background: #fff;
   border-radius: 8px;
+}
+
+.status-duplicate {
+  color: #e6a23c;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .file-name-cell {
