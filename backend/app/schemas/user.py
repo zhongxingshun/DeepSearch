@@ -24,8 +24,8 @@ class UserCreate(UserBase):
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:
-        if v not in ["admin", "user"]:
-            raise ValueError("角色必须是 admin 或 user")
+        if v not in ["super_admin", "admin", "user"]:
+            raise ValueError("角色必须是 super_admin、admin 或 user")
         return v
 
 
@@ -39,8 +39,8 @@ class UserUpdate(BaseModel):
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in ["admin", "user"]:
-            raise ValueError("角色必须是 admin 或 user")
+        if v is not None and v not in ["super_admin", "admin", "user"]:
+            raise ValueError("角色必须是 super_admin、admin 或 user")
         return v
 
 

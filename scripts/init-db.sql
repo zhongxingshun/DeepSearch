@@ -112,17 +112,17 @@ CREATE TRIGGER trigger_files_updated
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at();
 
--- 创建默认管理员用户 (密码: admin123456)
+-- 创建默认超级管理员用户 (密码: admin123456)
 -- 密码使用 bcrypt 加密
 INSERT INTO users (username, email, password_hash, role, is_active)
-VALUES ('admin', 'admin@deepsearch.local', '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS', 'admin', true)
+VALUES ('admin', 'admin@deepsearch.local', '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS', 'super_admin', true)
 ON CONFLICT (username) DO NOTHING;
 
 -- 输出初始化信息
 DO $$
 BEGIN
     RAISE NOTICE 'DeepSearch 数据库初始化完成';
-    RAISE NOTICE '默认管理员账号: admin';
-    RAISE NOTICE '默认管理员密码: admin123456';
+    RAISE NOTICE '默认超级管理员账号: admin';
+    RAISE NOTICE '默认超级管理员密码: admin123456';
     RAISE NOTICE '请登录后立即修改密码!';
 END $$;

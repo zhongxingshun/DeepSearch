@@ -37,6 +37,31 @@ class UpdateStatusRequest(BaseModel):
     is_active: bool
 
 
+class UpdateRoleRequest(BaseModel):
+    role: str
+
+
+ALLOWED_ROLES = {"super_admin", "admin", "user"}
+
+
+def ensure_role_valid(role: str) -> None:
+    if role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=400, detail="无效的角色类型")
+
+
+def ensure_super_admin(current_user: User) -> None:
+    if current_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="需要超级管理员权限")
+
+
+def ensure_manageable_user(current_user: User, target_user: User) -> None:
+    if current_user.role == "super_admin":
+        return
+
+    if target_user.role != "user":
+        raise HTTPException(status_code=403, detail="管理员只能管理普通用户")
+
+
 # ============================================
 # 用户管理
 # ============================================
@@ -64,8 +89,16 @@ async def list_users(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/users")
-async def create_user(req: CreateUserRequest, db: AsyncSession = Depends(get_db)):
+async def create_user(
+    req: CreateUserRequest,
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     """创建用户"""
+    ensure_role_valid(req.role)
+    if req.role != "user":
+        ensure_super_admin(current_user)
+
     # 检查用户名是否已存在
     existing = await db.execute(select(User).where(User.username == req.username))
     if existing.scalar_one_or_none():
@@ -103,6 +136,8 @@ async def update_user_status(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
+    ensure_manageable_user(current_user, user)
+
     if user.id == current_user.id and not req.is_active:
         raise HTTPException(status_code=400, detail="不能禁用当前登录账号")
 
@@ -112,13 +147,44 @@ async def update_user_status(
     return {"message": "状态更新成功"}
 
 
+@router.put("/users/{user_id}/role")
+async def update_user_role(
+    user_id: int,
+    req: UpdateRoleRequest,
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新用户角色（仅超级管理员）"""
+    ensure_super_admin(current_user)
+    ensure_role_valid(req.role)
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if user.id == current_user.id and req.role != "super_admin":
+        raise HTTPException(status_code=400, detail="不能修改当前登录超级管理员的角色")
+
+    user.role = req.role
+    await db.commit()
+
+    return {"message": "角色更新成功"}
+
+
 @router.post("/users/{user_id}/reset-password")
-async def reset_password(user_id: int, db: AsyncSession = Depends(get_db)):
+async def reset_password(
+    user_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     """重置用户密码"""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    ensure_manageable_user(current_user, user)
 
     new_password = "deepsearch123"
     user.password_hash = pwd_context.hash(new_password)
@@ -128,12 +194,21 @@ async def reset_password(user_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     """删除用户"""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    ensure_manageable_user(current_user, user)
+
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能删除当前登录账号")
 
     await db.delete(user)
     await db.commit()

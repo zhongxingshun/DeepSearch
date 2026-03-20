@@ -12,8 +12,8 @@
         <el-table-column label="邮箱" prop="email" min-width="180" />
         <el-table-column label="角色" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.role === 'admin' ? 'danger' : ''">
-              {{ row.role === 'admin' ? '管理员' : '用户' }}
+            <el-tag :type="getRoleTagType(row.role)">
+              {{ getRoleText(row.role) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -32,10 +32,19 @@
             <el-button
               size="small"
               link
-              :disabled="isCurrentUser(row)"
+              :disabled="cannotToggleStatus(row)"
               @click="toggleStatus(row)"
             >
               {{ row.is_active ? '禁用' : '启用' }}
+            </el-button>
+            <el-button
+              v-if="isSuperAdmin"
+              size="small"
+              link
+              :disabled="isCurrentUser(row)"
+              @click="openRoleDialog(row)"
+            >
+              设置角色
             </el-button>
             <el-button size="small" link @click="resetPassword(row)">重置密码</el-button>
           </template>
@@ -58,13 +67,33 @@
         <el-form-item label="角色" prop="role">
           <el-radio-group v-model="form.role">
             <el-radio value="user">普通用户</el-radio>
-            <el-radio value="admin">管理员</el-radio>
+            <el-radio v-if="isSuperAdmin" value="admin">管理员</el-radio>
+            <el-radio v-if="isSuperAdmin" value="super_admin">超级管理员</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showDialog = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showRoleDialog" title="设置角色" width="420px">
+      <el-form label-width="90px">
+        <el-form-item label="用户名">
+          <span>{{ selectedUser?.username }}</span>
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-radio-group v-model="roleForm.role">
+            <el-radio value="user">普通用户</el-radio>
+            <el-radio value="admin">管理员</el-radio>
+            <el-radio value="super_admin">超级管理员</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRoleDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleRoleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -80,14 +109,21 @@ import type { User } from '@/types'
 
 const loading = ref(false)
 const showDialog = ref(false)
+const showRoleDialog = ref(false)
 const formRef = ref<FormInstance>()
 const users = ref<User[]>([])
 const authStore = useAuthStore()
+const selectedUser = ref<User | null>(null)
+const isSuperAdmin = authStore.isSuperAdmin
 
 const form = reactive({
   username: '',
   email: '',
   password: '',
+  role: 'user',
+})
+
+const roleForm = reactive({
   role: 'user',
 })
 
@@ -123,6 +159,10 @@ const handleSubmit = async () => {
     await http.post('/admin/users', form)
     ElMessage.success('添加成功')
     showDialog.value = false
+    form.username = ''
+    form.email = ''
+    form.password = ''
+    form.role = 'user'
     loadUsers()
   } catch {
     ElMessage.error('添加失败')
@@ -130,8 +170,8 @@ const handleSubmit = async () => {
 }
 
 const toggleStatus = async (user: any) => {
-  if (isCurrentUser(user)) {
-    ElMessage.warning('不能禁用当前登录账号')
+  if (cannotToggleStatus(user)) {
+    ElMessage.warning(isCurrentUser(user) ? '不能禁用当前登录账号' : '没有权限管理管理员账号')
     return
   }
 
@@ -145,6 +185,11 @@ const toggleStatus = async (user: any) => {
 }
 
 const resetPassword = async (user: any) => {
+  if (!canManageUser(user)) {
+    ElMessage.warning('没有权限管理管理员账号')
+    return
+  }
+
   try {
     await http.post(`/admin/users/${user.id}/reset-password`)
     ElMessage.success('密码已重置')
@@ -155,6 +200,38 @@ const resetPassword = async (user: any) => {
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 const isCurrentUser = (user: User) => user.id === authStore.user?.id
+const canManageUser = (user: User) => isSuperAdmin.value || user.role === 'user'
+const cannotToggleStatus = (user: User) => isCurrentUser(user) || !canManageUser(user)
+const getRoleText = (role: User['role']) => ({
+  super_admin: '超级管理员',
+  admin: '管理员',
+  user: '普通用户',
+}[role] || role)
+const getRoleTagType = (role: User['role']) => ({
+  super_admin: 'danger',
+  admin: 'warning',
+  user: '',
+}[role] || '')
+
+const openRoleDialog = (user: User) => {
+  selectedUser.value = user
+  roleForm.role = user.role
+  showRoleDialog.value = true
+}
+
+const handleRoleSubmit = async () => {
+  if (!selectedUser.value) return
+
+  try {
+    await http.put(`/admin/users/${selectedUser.value.id}/role`, { role: roleForm.role })
+    ElMessage.success('角色更新成功')
+    showRoleDialog.value = false
+    selectedUser.value = null
+    loadUsers()
+  } catch {
+    ElMessage.error('角色更新失败')
+  }
+}
 
 onMounted(() => loadUsers())
 </script>

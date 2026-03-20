@@ -51,7 +51,12 @@ class User(Base):
     @property
     def is_admin(self) -> bool:
         """是否为管理员"""
-        return self.role == "admin"
+        return self.role in {"admin", "super_admin"}
+
+    @property
+    def is_super_admin(self) -> bool:
+        """是否为超级管理员"""
+        return self.role == "super_admin"
 
     @property
     def is_locked(self) -> bool:

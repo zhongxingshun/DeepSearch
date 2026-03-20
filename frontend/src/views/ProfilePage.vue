@@ -11,8 +11,8 @@
             <el-descriptions-item label="用户名">{{ user?.username }}</el-descriptions-item>
             <el-descriptions-item label="邮箱">{{ user?.email }}</el-descriptions-item>
             <el-descriptions-item label="角色">
-              <el-tag :type="user?.role === 'admin' ? 'danger' : ''">
-                {{ user?.role === 'admin' ? '管理员' : '普通用户' }}
+              <el-tag :type="getRoleTagType(user?.role)">
+                {{ getRoleText(user?.role) }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="状态">
@@ -109,4 +109,20 @@ const handleSubmit = async () => {
 }
 
 const formatDate = (date?: string) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-'
+const getRoleText = (role?: string) => {
+  const roleTextMap: Record<string, string> = {
+    super_admin: '超级管理员',
+    admin: '管理员',
+    user: '普通用户',
+  }
+  return role ? (roleTextMap[role] || role) : '-'
+}
+const getRoleTagType = (role?: string) => {
+  const roleTypeMap: Record<string, '' | 'danger' | 'warning'> = {
+    super_admin: 'danger',
+    admin: 'warning',
+    user: '',
+  }
+  return role ? (roleTypeMap[role] || '') : ''
+}
 </script>

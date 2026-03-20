@@ -125,7 +125,7 @@ router.beforeEach(async (to, from, next) => {
         }
 
         // 检查是否需要管理员权限
-        if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
+        if (to.meta.requiresAdmin && !['admin', 'super_admin'].includes(authStore.user?.role || '')) {
             return next({ name: 'home' })
         }
     }
