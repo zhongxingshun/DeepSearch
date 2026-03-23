@@ -201,7 +201,17 @@
       <el-table-column label="大小" width="100" prop="file_size_human" />
       <el-table-column label="状态" width="110">
         <template #default="{ row }">
-          <el-tag :type="getStatusType(row.index_status)" size="small">
+          <el-tooltip
+            v-if="shouldShowStatusDetail(row)"
+            placement="top"
+            :show-after="200"
+            :content="getStatusDetail(row)"
+          >
+            <el-tag :type="getStatusType(row.index_status)" size="small" class="status-tag detail">
+              {{ getStatusText(row.index_status) }}
+            </el-tag>
+          </el-tooltip>
+          <el-tag v-else :type="getStatusType(row.index_status)" size="small" class="status-tag">
             {{ getStatusText(row.index_status) }}
           </el-tag>
         </template>
@@ -415,7 +425,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { fileApi } from '@/api/files'
 import { ElMessage, ElMessageBox, type UploadInstance, type TableInstance } from 'element-plus'
 import dayjs from 'dayjs'
@@ -439,6 +449,8 @@ const selectedFiles = ref<FileItem[]>([])
 const stats = ref<any>({})
 const uploadRef = ref<UploadInstance>()
 const uploadFileList = ref<any[]>([])
+const fileStatusDetails = reactive<Record<number, { error_message?: string | null; task_status?: string | null; updated_at?: string }>>({})
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
 
 // 文件夹导航
 const currentFolder = ref<string>('/')
@@ -559,6 +571,7 @@ const loadFiles = async () => {
     files.value = response.data
     total.value = response.total
     selectedFiles.value = []
+    await refreshVisibleStatusDetails()
   } catch {
     ElMessage.error('加载文件列表失败')
   } finally {
@@ -580,6 +593,72 @@ const refreshFilePageData = () => {
   loadFiles()
   loadStats()
   loadSubfolders()
+}
+
+const syncStatusPolling = () => {
+  const needPolling = files.value.some((file) =>
+    ['pending', 'processing', 'parsed'].includes(file.index_status)
+  )
+
+  if (!needPolling) {
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer)
+      statusPollTimer = null
+    }
+    return
+  }
+
+  if (statusPollTimer) return
+
+  statusPollTimer = setInterval(() => {
+    refreshVisibleStatusDetails()
+  }, 5000)
+}
+
+const refreshVisibleStatusDetails = async () => {
+  const currentIds = new Set(files.value.map((file) => file.id))
+  for (const key of Object.keys(fileStatusDetails)) {
+    if (!currentIds.has(Number(key))) {
+      delete fileStatusDetails[Number(key)]
+    }
+  }
+
+  const targetFiles = files.value.filter((file) =>
+    ['pending', 'processing', 'failed', 'parsed'].includes(file.index_status)
+  )
+
+  if (!targetFiles.length) {
+    syncStatusPolling()
+    return
+  }
+
+  const statuses = await Promise.allSettled(
+    targetFiles.map((file) => fileApi.getFileStatus(file.id))
+  )
+
+  let shouldRefreshStats = false
+
+  statuses.forEach((result, index) => {
+    const file = targetFiles[index]
+    if (result.status !== 'fulfilled') return
+
+    const payload = result.value
+    fileStatusDetails[file.id] = {
+      error_message: payload.error_message,
+      updated_at: payload.updated_at,
+    }
+
+    if (payload.index_status && payload.index_status !== file.index_status) {
+      file.index_status = payload.index_status
+      shouldRefreshStats = true
+    }
+  })
+
+  if (shouldRefreshStats) {
+    loadStats()
+  }
+
+  syncStatusPolling()
 }
 
 // 上传文件（普通）
@@ -996,6 +1075,27 @@ const getStatusText = (status: string) => {
   return texts[status] || status
 }
 
+const shouldShowStatusDetail = (file: FileItem) =>
+  ['pending', 'processing', 'failed', 'parsed'].includes(file.index_status)
+
+const getStatusDetail = (file: FileItem) => {
+  const statusDetail = fileStatusDetails[file.id]
+
+  if (file.index_status === 'failed') {
+    return statusDetail?.error_message || '处理失败，暂无详细错误信息'
+  }
+
+  if (file.index_status === 'parsed') {
+    return '文档已解析完成，正在等待建立索引'
+  }
+
+  if (file.index_status === 'processing') {
+    return '文档正在解析或建立索引，请稍后刷新'
+  }
+
+  return '文件已进入处理队列，等待后台任务执行'
+}
+
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 
 const formatFileSize = (bytes: number) => {
@@ -1009,6 +1109,13 @@ onMounted(() => {
   loadFiles()
   loadStats()
   loadSubfolders()
+})
+
+onBeforeUnmount(() => {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer)
+    statusPollTimer = null
+  }
 })
 </script>
 
@@ -1176,6 +1283,10 @@ onMounted(() => {
   color: #e6a23c;
   font-size: 12px;
   font-weight: 600;
+}
+
+.status-tag.detail {
+  cursor: help;
 }
 
 .skipped-tag {
