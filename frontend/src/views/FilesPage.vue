@@ -223,6 +223,9 @@
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
+          <el-button size="small" link type="primary" @click="openPreview(row)">
+            预览
+          </el-button>
           <el-button size="small" link type="primary" @click="downloadFile(row)">
             下载
           </el-button>
@@ -257,6 +260,67 @@
         @size-change="loadFiles"
       />
     </div>
+
+    <el-drawer
+      v-model="showPreview"
+      :title="previewFile?.display_name || previewFile?.filename || '文件预览'"
+      size="55%"
+      direction="rtl"
+      :close-on-click-modal="true"
+    >
+      <div v-if="previewFile" class="preview-container">
+        <div class="preview-file-info">
+          <div :class="['file-type-icon-lg', `file-type-${previewFile.file_type}`]">
+            <el-icon :size="28">
+              <component :is="getFileIcon(previewFile.file_type)" />
+            </el-icon>
+          </div>
+          <div class="preview-meta">
+            <h3>{{ previewFile.display_name || previewFile.filename }}</h3>
+            <div class="preview-meta-row">
+              <span>{{ getFileTypeLabel(previewFile.file_type) }}</span>
+              <span>{{ previewFile.file_size_human }}</span>
+              <span>{{ formatDate(previewFile.created_at) }}</span>
+            </div>
+          </div>
+          <el-button type="primary" @click="downloadFile(previewFile)">
+            下载文件
+          </el-button>
+        </div>
+
+        <div class="preview-content">
+          <div v-if="previewFile.file_type === 'image'" class="preview-image">
+            <img
+              :src="getPreviewUrl(previewFile.id)"
+              :alt="previewFile.filename"
+              @error="previewError = true"
+            />
+            <div v-if="previewError" class="preview-error">
+              <el-icon :size="48" color="#c0c4cc"><Picture /></el-icon>
+              <p>图片加载失败</p>
+            </div>
+          </div>
+
+          <div v-else-if="previewFile.file_type === 'pdf'" class="preview-pdf">
+            <iframe :src="getPreviewUrl(previewFile.id)" frameborder="0"></iframe>
+          </div>
+
+          <div v-else class="preview-text">
+            <div class="preview-text-label">
+              <el-icon><Document /></el-icon>
+              文件预览说明
+            </div>
+            <div class="preview-no-visual">
+              <el-icon :size="40" color="#dcdfe6"><Document /></el-icon>
+              <p>该文件类型暂不支持可视化预览</p>
+              <el-button type="primary" plain @click="downloadFile(previewFile)">
+                下载后查看完整内容
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
     
     <!-- 上传对话框 -->
     <el-dialog v-model="showUpload" :title="`上传文件到 ${currentFolder}`" width="500px">
@@ -449,6 +513,9 @@ const selectedFiles = ref<FileItem[]>([])
 const stats = ref<any>({})
 const uploadRef = ref<UploadInstance>()
 const uploadFileList = ref<any[]>([])
+const showPreview = ref(false)
+const previewFile = ref<FileItem | null>(null)
+const previewError = ref(false)
 const fileStatusDetails = reactive<Record<number, { error_message?: string | null; task_status?: string | null; updated_at?: string }>>({})
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -959,6 +1026,16 @@ const retryAllFailed = async () => {
 
 // ============== 通用工具函数 ==============
 
+const openPreview = (file: FileItem) => {
+  previewFile.value = file
+  previewError.value = false
+  showPreview.value = true
+}
+
+const getPreviewUrl = (fileId: number): string => {
+  return fileApi.getPreviewUrl(fileId)
+}
+
 // 下载文件
 const downloadFile = (file: FileItem) => {
   const url = fileApi.getDownloadUrl(file.id)
@@ -1397,6 +1474,106 @@ onBeforeUnmount(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-file-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.file-type-icon-lg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+}
+
+.preview-meta {
+  flex: 1;
+  min-width: 0;
+
+  h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    color: #303133;
+    word-break: break-all;
+  }
+}
+
+.preview-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.preview-content {
+  min-height: 420px;
+}
+
+.preview-image {
+  position: relative;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 12px;
+  overflow: hidden;
+
+  img {
+    max-width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+  }
+}
+
+.preview-pdf {
+  height: 72vh;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8fafc;
+
+  iframe {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.preview-text-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.preview-no-visual,
+.preview-error {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #909399;
+  text-align: center;
 }
 
 /* 文件夹上传样式 */
