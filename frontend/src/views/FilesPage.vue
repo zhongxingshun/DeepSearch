@@ -3,7 +3,7 @@
     <div class="page-header">
       <h1>文件管理</h1>
       <div class="header-actions">
-        <el-button type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
+        <el-button v-if="isAdmin" type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
           新建文件夹
         </el-button>
         <el-button type="primary" :icon="Upload" @click="showUpload = true">
@@ -103,6 +103,7 @@
           <div class="subfolder-count">{{ folder.file_count }} 个文件</div>
         </div>
         <el-button
+          v-if="isAdmin"
           class="subfolder-delete"
           link
           type="danger"
@@ -139,12 +140,12 @@
         <el-option label="失败" value="failed" />
       </el-select>
       <el-button :icon="Refresh" @click="loadFiles">刷新</el-button>
-      <el-button v-if="stats.by_status?.failed > 0" type="warning" :icon="RefreshRight" @click="retryAllFailed">
+      <el-button v-if="isAdmin && stats.by_status?.failed > 0" type="warning" :icon="RefreshRight" @click="retryAllFailed">
         重试全部失败（{{ stats.by_status?.failed }}）
       </el-button>
     </div>
 
-    <div v-if="selectedFiles.length > 0" class="batch-bar card">
+    <div v-if="isAdmin && selectedFiles.length > 0" class="batch-bar card">
       <span class="batch-summary">已选择 {{ selectedFiles.length }} 个文件</span>
       <div class="batch-actions">
         <el-button type="danger" :icon="Delete" @click="batchDeleteSelectedFiles">
@@ -163,7 +164,7 @@
       stripe
       @selection-change="handleSelectionChange"
     >
-      <el-table-column type="selection" width="48" reserve-selection />
+      <el-table-column v-if="isAdmin" type="selection" width="48" reserve-selection />
       <el-table-column label="文件名" min-width="250">
         <template #default="{ row }">
           <div class="file-name-cell">
@@ -229,11 +230,11 @@
           <el-button size="small" link type="primary" @click="downloadFile(row)">
             下载
           </el-button>
-          <el-button size="small" link type="primary" @click="showMoveDialog(row)">
+          <el-button v-if="isAdmin" size="small" link type="primary" @click="showMoveDialog(row)">
             移动
           </el-button>
           <el-button
-            v-if="row.index_status === 'failed' || row.index_status === 'parsed'"
+            v-if="isAdmin && (row.index_status === 'failed' || row.index_status === 'parsed')"
             size="small"
             link
             type="warning"
@@ -241,7 +242,7 @@
           >
             {{ row.index_status === 'failed' ? '重新上传' : '重新处理' }}
           </el-button>
-          <el-button size="small" link type="danger" @click="deleteFile(row)">
+          <el-button v-if="isAdmin" size="small" link type="danger" @click="deleteFile(row)">
             删除
           </el-button>
         </template>
@@ -491,6 +492,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { fileApi } from '@/api/files'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox, type UploadInstance, type TableInstance } from 'element-plus'
 import dayjs from 'dayjs'
 import type { FileItem } from '@/types'
@@ -518,6 +520,8 @@ const previewFile = ref<FileItem | null>(null)
 const previewError = ref(false)
 const fileStatusDetails = reactive<Record<number, { error_message?: string | null; task_status?: string | null; updated_at?: string }>>({})
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
 
 // 文件夹导航
 const currentFolder = ref<string>('/')

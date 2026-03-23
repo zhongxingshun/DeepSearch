@@ -264,7 +264,7 @@ async def list_folders(
 @router.post("/folders", response_model=ResponseBase)
 async def create_folder(
     body: FolderCreateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """创建空文件夹"""
@@ -287,7 +287,7 @@ async def create_folder(
 @router.delete("/folders", response_model=ResponseBase)
 async def delete_folder(
     path: str = Query(..., description="文件夹路径"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """删除空文件夹"""
@@ -604,7 +604,7 @@ async def retry_file(
 async def move_file(
     file_id: int,
     body: FileMoveRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """
