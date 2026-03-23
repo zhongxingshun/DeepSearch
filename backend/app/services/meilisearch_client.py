@@ -328,7 +328,29 @@ class MeilisearchClient:
             search_params["sort"] = sort
         
         # 执行搜索
-        results = index.search(segmented_query, search_params)
+        try:
+            results = index.search(segmented_query, search_params)
+        except MeilisearchApiError as exc:
+            error_message = str(exc)
+            needs_reconfigure = any(
+                marker in error_message
+                for marker in (
+                    "invalid_search_filter",
+                    "invalid_search_sort",
+                    "is not filterable",
+                    "is not sortable",
+                )
+            )
+
+            if not needs_reconfigure:
+                raise
+
+            logger.warning(
+                "Meilisearch 索引设置缺失，正在自动修复后重试搜索: %s",
+                error_message,
+            )
+            await self.init_index()
+            results = self.get_index().search(segmented_query, search_params)
         
         return {
             "hits": results.get("hits", []),
