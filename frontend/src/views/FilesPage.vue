@@ -348,8 +348,27 @@
           </div>
         </template>
       </el-upload>
+      <div v-if="uploadFailedItems.length > 0" class="upload-failed-list">
+        <div class="upload-failed-title">上传失败文件</div>
+        <div
+          v-for="item in uploadFailedItems"
+          :key="item.uid"
+          class="upload-failed-item"
+        >
+          <span class="upload-failed-name">{{ item.name }}</span>
+          <span class="upload-failed-reason">{{ item.errorMessage || '上传失败，请稍后重试' }}</span>
+        </div>
+      </div>
       <template #footer>
         <el-button @click="showUpload = false">取消</el-button>
+        <el-button
+          v-if="uploadFailedItems.length > 0"
+          type="warning"
+          :loading="uploading"
+          @click="retryFailedUploadItems"
+        >
+          重传失败项（{{ uploadFailedItems.length }}）
+        </el-button>
         <el-button type="primary" :loading="uploading" @click="handleUpload">
           开始上传
         </el-button>
@@ -429,6 +448,14 @@
       
       <template #footer>
         <el-button @click="showFolderUpload = false" :disabled="folderUploading">取消</el-button>
+        <el-button
+          v-if="failedFolderItems.length > 0"
+          type="warning"
+          :loading="folderUploading"
+          @click="retryFailedFolderUploads"
+        >
+          重传失败项（{{ failedFolderItems.length }}）
+        </el-button>
         <el-button type="primary" :loading="folderUploading" @click="handleFolderUpload" :disabled="folderProgress === 100">
           {{ folderUploading ? '上传中...' : folderProgress === 100 ? '上传完成' : '开始上传' }}
         </el-button>
@@ -555,6 +582,12 @@ const folderUploading = ref(false)
 const folderProgress = ref(0)
 const folderUploadedCount = ref(0)
 const folderFailCount = ref(0)
+const uploadFailedItems = computed(() =>
+  uploadFileList.value.filter((item) => item.uploadStatus === 'error')
+)
+const failedFolderItems = computed(() =>
+  folderFiles.value.filter((item) => item.status === 'error')
+)
 
 // 移动文件
 const showMove = ref(false)
@@ -666,6 +699,14 @@ const refreshFilePageData = () => {
   loadSubfolders()
 }
 
+const extractErrorMessage = (error: any, fallback = '上传失败，请稍后重试') =>
+  error?.response?.data?.detail || error?.response?.data?.message || fallback
+
+const resetUploadDialogState = () => {
+  uploadFileList.value = []
+  showUpload.value = false
+}
+
 const syncStatusPolling = () => {
   const needPolling = files.value.some((file) =>
     ['pending', 'processing', 'parsed'].includes(file.index_status)
@@ -743,9 +784,13 @@ const handleUpload = async () => {
   let successCount = 0
   let duplicateCount = 0
   let failCount = 0
+  const candidates = uploadFileList.value.filter((item) => item.raw)
   
   try {
-    for (const item of uploadFileList.value) {
+    for (const item of candidates) {
+      item.uploadStatus = 'uploading'
+      item.errorMessage = ''
+
       try {
         const res = await fileApi.uploadFile(
           item.raw,
@@ -754,19 +799,27 @@ const handleUpload = async () => {
         )
 
         if (res.is_duplicate) {
+          item.uploadStatus = 'duplicate'
           duplicateCount++
         } else {
+          item.uploadStatus = 'success'
           successCount++
         }
-      } catch {
+      } catch (error) {
+        item.uploadStatus = 'error'
+        item.errorMessage = extractErrorMessage(error)
         failCount++
       }
     }
 
     if (successCount > 0 || duplicateCount > 0) {
-      showUpload.value = false
-      uploadFileList.value = []
       refreshFilePageData()
+    }
+
+    if (failCount > 0) {
+      uploadFileList.value = uploadFileList.value.filter((item) => item.uploadStatus === 'error')
+    } else if (successCount > 0 || duplicateCount > 0) {
+      resetUploadDialogState()
     }
 
     if (successCount > 0 && duplicateCount > 0) {
@@ -778,11 +831,16 @@ const handleUpload = async () => {
     }
 
     if (failCount > 0) {
-      ElMessage.warning(`${failCount} 个文件上传失败`)
+      ElMessage.warning(`${failCount} 个文件上传失败，可直接重传失败项`)
     }
   } finally {
     uploading.value = false
   }
+}
+
+const retryFailedUploadItems = async () => {
+  if (!uploadFailedItems.value.length) return
+  await handleUpload()
 }
 
 // ============== 文件夹上传 ==============
@@ -861,19 +919,29 @@ const handleFolderSelected = (event: Event) => {
 
 // 执行文件夹上传
 const handleFolderUpload = async () => {
-  if (folderFiles.value.length === 0) return
-  
+  await uploadFolderItems(
+    folderFiles.value.filter((item) => item.status === 'pending'),
+    true
+  )
+}
+
+const uploadFolderItems = async (items: any[], resetCounters = false) => {
+  if (items.length === 0) return
+
   folderUploading.value = true
-  folderUploadedCount.value = 0
-  folderFailCount.value = 0
-  folderProgress.value = 0
-  
-  const totalFiles = folderFiles.value.length
   let duplicateCount = 0
-  
-  for (let i = 0; i < totalFiles; i++) {
-    const item = folderFiles.value[i]
+
+  if (resetCounters) {
+    folderUploadedCount.value = 0
+    folderFailCount.value = 0
+    folderProgress.value = 0
+  } else {
+    folderFailCount.value = failedFolderItems.value.length
+  }
+
+  for (const item of items) {
     item.status = 'uploading'
+    item.errorMessage = ''
     
     try {
       const res = await fileApi.uploadFile(
@@ -887,14 +955,18 @@ const handleFolderUpload = async () => {
         duplicateCount++
       } else {
         item.status = 'success'
-        folderUploadedCount.value++
       }
-    } catch {
+    } catch (error) {
       item.status = 'error'
-      folderFailCount.value++
+      item.errorMessage = extractErrorMessage(error)
     }
-    
-    folderProgress.value = Math.round(((i + 1) / totalFiles) * 100)
+
+    folderUploadedCount.value = folderFiles.value.filter((file) => file.status === 'success').length
+    folderFailCount.value = failedFolderItems.value.length
+    const completedCount = folderFiles.value.filter((file) =>
+      ['success', 'duplicate', 'error'].includes(file.status)
+    ).length
+    folderProgress.value = Math.round((completedCount / folderFiles.value.length) * 100)
   }
   
   folderUploading.value = false
@@ -921,6 +993,10 @@ const handleFolderUpload = async () => {
   } else {
     ElMessage.error('所有文件上传失败')
   }
+}
+
+const retryFailedFolderUploads = async () => {
+  await uploadFolderItems(failedFolderItems.value, false)
 }
 
 // ============== 移动功能 ==============
@@ -1650,6 +1726,44 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #67c23a;
   border: 1px solid #e1f3d8;
+}
+
+.upload-failed-list {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #fde2e2;
+  border-radius: 8px;
+  background: #fff7f7;
+}
+
+.upload-failed-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f56c6c;
+}
+
+.upload-failed-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-top: 1px dashed #f8d7da;
+
+  &:first-of-type {
+    border-top: none;
+  }
+}
+
+.upload-failed-name {
+  color: #303133;
+  word-break: break-all;
+}
+
+.upload-failed-reason {
+  color: #909399;
+  text-align: right;
 }
 
 /* 移动文件对话框 */
