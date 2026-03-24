@@ -3,7 +3,7 @@
 版本: v1.0
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
@@ -63,7 +63,21 @@ class User(Base):
         """账号是否被锁定"""
         if self.locked_until is None:
             return False
-        return datetime.utcnow() < self.locked_until
+        return self.get_lock_remaining_seconds() > 0
+
+    def get_lock_remaining_seconds(self) -> float:
+        """返回账号剩余锁定秒数，兼容有无时区信息的时间字段。"""
+        if self.locked_until is None:
+            return 0
+
+        locked_until = self.locked_until
+        if locked_until.tzinfo is not None:
+            now = datetime.now(timezone.utc)
+            locked_until = locked_until.astimezone(timezone.utc)
+        else:
+            now = datetime.utcnow()
+
+        return max((locked_until - now).total_seconds(), 0)
 
     def to_dict(self) -> dict:
         """转换为字典"""

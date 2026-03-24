@@ -68,7 +68,7 @@ class AuthService:
         
         # 检查账号是否锁定
         if user.is_locked:
-            remaining = (user.locked_until - datetime.utcnow()).total_seconds()
+            remaining = user.get_lock_remaining_seconds()
             await self._log_audit(
                 user.id, AuditActionType.LOGIN_FAILED, ip_address,
                 {"reason": "account_locked", "remaining_seconds": remaining}

@@ -3,10 +3,13 @@
 版本: v1.0
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 
 from app.core.security import get_password_hash, validate_password_strength
+from app.models.user import User
 
 
 class TestPasswordValidation:
@@ -69,6 +72,34 @@ class TestPasswordHashing:
         
         assert verify_password(password, hashed) is True
         assert verify_password("wrong_password", hashed) is False
+
+
+class TestUserLockState:
+    """用户锁定状态测试"""
+
+    def test_timezone_aware_locked_until_is_supported(self):
+        """测试带时区的锁定时间不会触发比较异常。"""
+        user = User(
+            username="locked_user",
+            email="locked@example.com",
+            password_hash="hash",
+            locked_until=datetime.now(timezone.utc) + timedelta(minutes=5),
+        )
+
+        assert user.is_locked is True
+        assert user.get_lock_remaining_seconds() > 0
+
+    def test_expired_locked_until_returns_unlocked(self):
+        """测试过期的锁定时间会正确解锁。"""
+        user = User(
+            username="expired_user",
+            email="expired@example.com",
+            password_hash="hash",
+            locked_until=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+
+        assert user.is_locked is False
+        assert user.get_lock_remaining_seconds() == 0
 
 
 @pytest.mark.asyncio
