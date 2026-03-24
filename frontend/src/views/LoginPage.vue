@@ -37,7 +37,6 @@
               placeholder="请输入密码"
               size="large"
               show-password
-              @keyup.enter="handleLogin"
             />
           </el-form-item>
           
@@ -47,10 +46,10 @@
           
           <el-button
             type="primary"
+            native-type="submit"
             size="large"
             :loading="loading"
             class="login-btn"
-            @click="handleLogin"
           >
             {{ loading ? '登录中...' : '登 录' }}
           </el-button>
@@ -103,7 +102,7 @@ const rules: FormRules = {
 }
 
 const handleLogin = async () => {
-  if (!formRef.value) return
+  if (!formRef.value || loading.value) return
   
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
