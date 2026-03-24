@@ -8,6 +8,17 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
 
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+    _retry?: boolean
+}
+
+let refreshPromise: Promise<boolean> | null = null
+
+const isAuthEndpoint = (url?: string): boolean => {
+    if (!url) return false
+    return url.includes('/auth/login') || url.includes('/auth/refresh')
+}
+
 // 创建 axios 实例
 const http = axios.create({
     baseURL: '/api/v1',
@@ -46,17 +57,30 @@ http.interceptors.response.use(
 
         const { status, data } = response
         const message = data?.detail || data?.message || '请求失败'
+        const requestConfig = error.config as RetryableRequestConfig | undefined
 
         switch (status) {
             case 401:
-                // 尝试刷新令牌
                 const authStore = useAuthStore()
-                const refreshed = await authStore.refreshAccessToken()
 
-                if (refreshed && error.config) {
-                    // 重试请求
-                    return http(error.config)
-                } else {
+                if (isAuthEndpoint(requestConfig?.url) || requestConfig?._retry) {
+                    return Promise.reject(error)
+                }
+
+                if (!refreshPromise) {
+                    refreshPromise = authStore.refreshAccessToken().finally(() => {
+                        refreshPromise = null
+                    })
+                }
+
+                const refreshed = await refreshPromise
+
+                if (refreshed && requestConfig) {
+                    requestConfig._retry = true
+                    return http(requestConfig)
+                }
+
+                if (authStore.token) {
                     authStore.clearAuth()
                     router.push({ name: 'login' })
                     ElMessage.error('登录已过期，请重新登录')
