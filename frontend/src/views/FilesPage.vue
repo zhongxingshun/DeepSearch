@@ -245,54 +245,56 @@
       <el-table-column :label="t('files.actions')" width="380" fixed="right">
         <template #default="{ row }">
           <div class="table-actions">
-            <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
-              {{ t('common.preview') }}
-            </el-button>
-            <el-button
-              v-if="isAdmin"
-              size="small"
-              link
-              type="primary"
-              @click="openRenameFileDialog(row)"
-            >
-              {{ t('common.rename') }}
-            </el-button>
-            <el-button
-              v-if="row.source_url"
-              size="small"
-              link
-              type="primary"
-              @click="copySourceUrl(row.source_url)"
-            >
-              {{ t('files.sourceLink') }}
-            </el-button>
-            <el-button
-              v-if="isAdmin"
-              size="small"
-              link
-              type="primary"
-              @click="openSourceUrlDialog(row)"
-            >
-              {{ row.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
-            </el-button>
-            <el-button size="small" link type="primary" @click="downloadFile(row)">
-              {{ t('common.download') }}
-            </el-button>
-            <el-button v-if="isAdmin" size="small" link type="primary" @click="showMoveDialog(row)">
-              {{ t('common.move') }}
-            </el-button>
-            <el-button
-              v-if="isAdmin && (row.index_status === 'failed' || row.index_status === 'parsed')"
-              size="small"
-              link
-              type="warning"
-              @click="retryFile(row)"
-            >
-              {{ row.index_status === 'failed' ? t('files.retryUpload') : t('files.reprocess') }}
-            </el-button>
-            <el-button v-if="isAdmin" size="small" link type="danger" @click="deleteFile(row)">
-              {{ t('common.delete') }}
-            </el-button>
+            <div class="table-actions__row">
+              <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
+                {{ t('common.preview') }}
+              </el-button>
+              <el-button
+                v-if="row.source_url"
+                size="small"
+                link
+                type="primary"
+                @click="copySourceUrl(row.source_url)"
+              >
+                {{ t('files.sourceLink') }}
+              </el-button>
+              <el-button size="small" link type="primary" @click="downloadFile(row)">
+                {{ t('common.download') }}
+              </el-button>
+            </div>
+            <div v-if="isAdmin" class="table-actions__row table-actions__row--admin">
+              <el-button
+                size="small"
+                link
+                type="primary"
+                @click="openRenameFileDialog(row)"
+              >
+                {{ t('common.rename') }}
+              </el-button>
+              <el-button
+                size="small"
+                link
+                type="primary"
+                @click="openSourceUrlDialog(row)"
+              >
+                {{ row.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
+              </el-button>
+              <el-button size="small" link type="primary" @click="showMoveDialog(row)">
+                {{ t('common.move') }}
+              </el-button>
+              <el-button
+                v-if="row.index_status === 'failed' || row.index_status === 'parsed'"
+                size="small"
+                link
+                type="warning"
+                @click="retryFile(row)"
+              >
+                {{ row.index_status === 'failed' ? t('files.retryUpload') : t('files.reprocess') }}
+              </el-button>
+              <el-button size="small" link type="danger" @click="deleteFile(row)">
+                {{ t('common.delete') }}
+              </el-button>
+            </div>
           </div>
         </template>
       </el-table-column>
@@ -1788,15 +1790,28 @@ onBeforeUnmount(() => {
 }
 
 .table-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, max-content));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-actions__row {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-  justify-content: start;
+  min-height: 24px;
+}
 
+.table-actions__row--admin {
+  padding-top: 2px;
+  border-top: 1px dashed #e9eef6;
+  min-height: 26px;
+}
+
+.table-actions {
   :deep(.el-button) {
     margin-left: 0;
-    justify-self: start;
   }
 }
 
