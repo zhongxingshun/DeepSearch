@@ -500,25 +500,49 @@ class FileService:
         }
 
     async def delete_folder(self, folder_path: str) -> None:
-        """删除空文件夹"""
+        """递归删除文件夹及其所有文件、子文件夹"""
         normalized = self.normalize_folder_path(folder_path)
         if normalized == "/":
             raise ValueError("根目录不允许删除")
 
         existing_files = await self.db.execute(
+            select(File.id).where(
+                (File.folder_path == normalized)
+                | (File.folder_path.like(f"{normalized}/%"))
+            )
+        )
+        file_ids = [file_id for file_id in existing_files.scalars().all()]
+        if file_ids:
+            await self._delete_file_records(file_ids)
+
+        target_folders = [
+            path for path in self.storage.list_virtual_folders()
+            if path == normalized or path.startswith(f"{normalized}/")
+        ]
+        for path in sorted(target_folders, key=lambda item: item.count("/"), reverse=True):
+            self.storage.delete_virtual_folder(path)
+
+    async def get_folder_delete_summary(self, folder_path: str) -> dict:
+        """获取删除文件夹前的影响范围统计"""
+        normalized = self.normalize_folder_path(folder_path)
+        if normalized == "/":
+            raise ValueError("根目录不允许删除")
+
+        file_count_result = await self.db.execute(
             select(func.count(File.id)).where(
                 (File.folder_path == normalized)
                 | (File.folder_path.like(f"{normalized}/%"))
             )
         )
-        if (existing_files.scalar() or 0) > 0:
-            raise ValueError("文件夹非空，无法删除")
+        file_count = file_count_result.scalar() or 0
 
-        virtual_subfolders = [
+        subfolder_count = len([
             path for path in self.storage.list_virtual_folders()
             if path.startswith(f"{normalized}/")
-        ]
-        if virtual_subfolders:
-            raise ValueError("文件夹存在子文件夹，无法删除")
+        ])
 
-        self.storage.delete_virtual_folder(normalized)
+        return {
+            "path": normalized,
+            "file_count": file_count,
+            "subfolder_count": subfolder_count,
+        }

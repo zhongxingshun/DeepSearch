@@ -1066,22 +1066,38 @@ const handleCreateFolder = async () => {
 }
 
 const deleteFolder = async (folder: { path: string; name: string }) => {
-  await ElMessageBox.confirm(
-    `确定要删除文件夹 "${folder.name}" 吗？仅支持删除空文件夹。`,
-    '删除文件夹',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  )
-
   try {
+    const summaryRes = await fileApi.getFolderDeleteSummary(folder.path)
+    const summary = summaryRes.data || { file_count: 0, subfolder_count: 0 }
+
+    await ElMessageBox.confirm(
+      `确定要删除文件夹 "${folder.name}" 吗？`,
+      '删除文件夹',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    await ElMessageBox.confirm(
+      `此操作将删除 "${folder.name}" 及其内容，包含 ${summary.file_count} 个文件、${summary.subfolder_count} 个子文件夹，且无法恢复。是否继续？`,
+      '二次确认',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'error',
+      }
+    )
+
     await fileApi.deleteFolder(folder.path)
     ElMessage.success('文件夹删除成功')
     loadSubfolders()
     loadAllFolders()
-  } catch {
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
     ElMessage.error('删除文件夹失败')
   }
 }

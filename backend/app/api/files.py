@@ -307,6 +307,30 @@ async def delete_folder(
     )
 
 
+@router.get("/folders/delete-summary", response_model=ResponseBase)
+async def get_folder_delete_summary(
+    path: str = Query(..., description="文件夹路径"),
+    current_user: User = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取删除文件夹前的影响范围"""
+    file_service = FileService(db)
+
+    try:
+        summary = await file_service.get_folder_delete_summary(path)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    return ResponseBase(
+        success=True,
+        message="获取删除摘要成功",
+        data=summary,
+    )
+
+
 @router.get("/{file_id}", response_model=FileResponseSchema)
 async def get_file(
     file_id: int,

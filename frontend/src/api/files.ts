@@ -142,6 +142,13 @@ export const fileApi = {
     },
 
     /**
+     * 获取删除文件夹影响范围
+     */
+    async getFolderDeleteSummary(path: string): Promise<any> {
+        return http.get('/files/folders/delete-summary', { params: { path } })
+    },
+
+    /**
      * 移动文件到指定文件夹
      */
     async moveFile(id: number, targetFolder: string): Promise<any> {
