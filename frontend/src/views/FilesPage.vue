@@ -233,7 +233,7 @@
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column :label="t('files.actions')" width="380" fixed="right">
+      <el-table-column :label="t('files.actions')" width="280" fixed="right">
         <template #default="{ row }">
           <div class="table-actions">
             <div class="table-actions__row">
@@ -241,20 +241,33 @@
                 {{ t('common.preview') }}
               </el-button>
               <el-button
-                v-if="row.source_url"
+                v-if="isAdmin"
                 size="small"
                 link
                 type="primary"
-                @click="copySourceUrl(row.source_url)"
+                @click="showMoveDialog(row)"
               >
-                {{ t('files.sourceLink') }}
+                {{ t('common.move') }}
               </el-button>
-              <el-button size="small" link type="primary" @click="downloadFile(row)">
+              <el-button
+                v-if="isAdmin && (row.index_status === 'failed' || row.index_status === 'parsed')"
+                size="small"
+                link
+                type="warning"
+                @click="retryFile(row)"
+              >
+                {{ row.index_status === 'failed' ? t('files.retryUpload') : t('files.reprocess') }}
+              </el-button>
+              <el-button v-if="isAdmin" size="small" link type="danger" @click="deleteFile(row)">
+                {{ t('common.delete') }}
+              </el-button>
+              <el-button v-if="!isAdmin" size="small" link type="primary" @click="downloadFile(row)">
                 {{ t('common.download') }}
               </el-button>
             </div>
-            <div v-if="isAdmin" class="table-actions__row table-actions__row--admin">
+            <div class="table-actions__row">
               <el-button
+                v-if="isAdmin"
                 size="small"
                 link
                 type="primary"
@@ -263,27 +276,14 @@
                 {{ t('common.rename') }}
               </el-button>
               <el-button
+                v-if="isAdmin || row.source_url"
                 size="small"
                 link
                 type="primary"
-                @click="openSourceUrlDialog(row)"
+                @click="handleSourceLinkClick(row)"
+                @dblclick.stop="handleSourceLinkDoubleClick(row)"
               >
-                {{ row.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
-              </el-button>
-              <el-button size="small" link type="primary" @click="showMoveDialog(row)">
-                {{ t('common.move') }}
-              </el-button>
-              <el-button
-                v-if="row.index_status === 'failed' || row.index_status === 'parsed'"
-                size="small"
-                link
-                type="warning"
-                @click="retryFile(row)"
-              >
-                {{ row.index_status === 'failed' ? t('files.retryUpload') : t('files.reprocess') }}
-              </el-button>
-              <el-button size="small" link type="danger" @click="deleteFile(row)">
-                {{ t('common.delete') }}
+                {{ t('files.sourceLink') }}
               </el-button>
             </div>
           </div>
@@ -863,6 +863,8 @@ const refreshFilePageData = () => {
   loadSubfolders()
 }
 
+let sourceLinkClickTimer: number | null = null
+
 const copySourceUrl = async (sourceUrl?: string | null) => {
   if (!sourceUrl) return
 
@@ -883,6 +885,34 @@ const copySourceUrl = async (sourceUrl?: string | null) => {
     ElMessage.success(t('files.sourceLinkCopied'))
   } catch {
     ElMessage.error(t('files.sourceLinkCopyFailed'))
+  }
+}
+
+const clearSourceLinkClickTimer = () => {
+  if (sourceLinkClickTimer) {
+    window.clearTimeout(sourceLinkClickTimer)
+    sourceLinkClickTimer = null
+  }
+}
+
+const handleSourceLinkClick = (file: FileItem) => {
+  clearSourceLinkClickTimer()
+  sourceLinkClickTimer = window.setTimeout(async () => {
+    sourceLinkClickTimer = null
+    if (file.source_url) {
+      await copySourceUrl(file.source_url)
+      return
+    }
+    if (isAdmin.value) {
+      ElMessage.warning(t('files.sourceLinkEmptyHint'))
+    }
+  }, 220)
+}
+
+const handleSourceLinkDoubleClick = (file: FileItem) => {
+  clearSourceLinkClickTimer()
+  if (isAdmin.value) {
+    openSourceUrlDialog(file)
   }
 }
 
@@ -1613,6 +1643,7 @@ onBeforeUnmount(() => {
     clearInterval(statusPollTimer)
     statusPollTimer = null
   }
+  clearSourceLinkClickTimer()
 })
 </script>
 
@@ -1783,21 +1814,15 @@ onBeforeUnmount(() => {
 .table-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .table-actions__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
-  min-height: 24px;
-}
-
-.table-actions__row--admin {
-  padding-top: 2px;
-  border-top: 1px dashed #e9eef6;
-  min-height: 26px;
+  gap: 2px 12px;
+  line-height: 1.2;
 }
 
 .table-actions {
