@@ -3,6 +3,7 @@
 版本: v1.0
 """
 
+import logging
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
@@ -16,6 +17,9 @@ from app.config import settings
 from app.models.file import File
 from app.models.task import Task
 from app.services.file_storage_service import FileStorageService, file_storage
+from app.services.meilisearch_client import meili_client
+
+logger = logging.getLogger(__name__)
 
 
 class FileService:
@@ -51,6 +55,55 @@ class FileService:
             raise ValueError("源链接必须是合法的 http/https 地址")
 
         return normalized
+
+    @staticmethod
+    def validate_name(name: str, label: str) -> str:
+        """校验文件名/文件夹名"""
+        normalized = (name or "").strip()
+        if not normalized:
+            raise ValueError(f"{label}不能为空")
+        if normalized in {".", ".."}:
+            raise ValueError(f"{label}不合法")
+        invalid_chars = {"/", "\\", "\0"}
+        if any(char in normalized for char in invalid_chars):
+            raise ValueError(f"{label}不能包含 / 或 \\")
+        return normalized
+
+    @staticmethod
+    def join_folder_with_name(folder_path: str, name: str) -> str:
+        """拼接文件夹路径和名称"""
+        normalized_folder = FileService.normalize_folder_path(folder_path)
+        if normalized_folder == "/":
+            return f"/{name}"
+        return f"{normalized_folder}/{name}"
+
+    async def _sync_file_to_search_index(self, file: File) -> None:
+        """将最新文件元数据同步到搜索索引。"""
+        doc_id = file.meilisearch_id or file.md5_hash or f"file_{file.id}"
+        try:
+            existing_doc = await meili_client.get_document(doc_id)
+        except Exception as exc:
+            logger.warning("读取 Meilisearch 文档失败，file_id=%s, error=%s", file.id, exc)
+            return
+
+        if not existing_doc:
+            return
+
+        document = dict(existing_doc)
+        document.update(
+            {
+                "id": doc_id,
+                "file_id": file.id,
+                "filename": file.filename,
+                "file_type": file.file_type,
+                "file_size": file.file_size,
+                "file_path": file.file_path,
+                "folder_path": file.folder_path,
+                "uploaded_by": file.uploaded_by,
+                "created_at": file.created_at.isoformat() if file.created_at else None,
+            }
+        )
+        await meili_client.update_document(document)
 
     @staticmethod
     def _collect_ancestor_paths(path: str) -> list[str]:
@@ -503,6 +556,35 @@ class FileService:
         self.storage.create_virtual_folder(target_folder)
         
         file.folder_path = target_folder
+        await self.db.flush()
+        await self._sync_file_to_search_index(file)
+        await self.db.commit()
+        await self.db.refresh(file)
+        return file
+
+    async def rename_file(self, file_id: int, new_filename: str) -> File:
+        """在线重命名单个文件"""
+        file = await self.get_file_by_id(file_id)
+        if not file:
+            raise ValueError("文件不存在")
+
+        normalized_name = self.validate_name(new_filename, "文件名")
+        if normalized_name == file.filename:
+            return file
+
+        existing = await self.db.execute(
+            select(File.id).where(
+                File.folder_path == file.folder_path,
+                File.filename == normalized_name,
+                File.id != file.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise ValueError("同一文件夹下已存在同名文件")
+
+        file.filename = normalized_name
+        await self.db.flush()
+        await self._sync_file_to_search_index(file)
         await self.db.commit()
         await self.db.refresh(file)
         return file
@@ -555,6 +637,84 @@ class FileService:
             "path": normalized,
             "name": self._folder_name(normalized),
             "file_count": 0,
+        }
+
+    async def rename_folder(self, folder_path: str, new_name: str) -> dict:
+        """重命名文件夹并同步其下所有文件记录"""
+        source_path = self.normalize_folder_path(folder_path)
+        if source_path == "/":
+            raise ValueError("根目录不允许重命名")
+
+        normalized_name = self.validate_name(new_name, "文件夹名")
+        parent_path = str(PurePosixPath(source_path).parent)
+        parent_path = self.normalize_folder_path(parent_path)
+        target_path = self.join_folder_with_name(parent_path, normalized_name)
+
+        if target_path == source_path:
+            return {
+                "old_path": source_path,
+                "path": target_path,
+                "name": normalized_name,
+            }
+
+        all_folders = set(self.storage.list_virtual_folders())
+        if source_path not in all_folders:
+            file_count_result = await self.db.execute(
+                select(func.count(File.id)).where(
+                    (File.folder_path == source_path)
+                    | (File.folder_path.like(f"{source_path}/%"))
+                )
+            )
+            if not (file_count_result.scalar() or 0):
+                raise ValueError("文件夹不存在")
+
+        if target_path in all_folders:
+            raise ValueError("同级目录下已存在同名文件夹")
+
+        conflict_result = await self.db.execute(
+            select(func.count(File.id)).where(
+                (File.folder_path == target_path)
+                | (File.folder_path.like(f"{target_path}/%"))
+            )
+        )
+        if conflict_result.scalar() or 0:
+            raise ValueError("同级目录下已存在同名文件夹")
+
+        prefix = f"{source_path}/"
+        file_result = await self.db.execute(
+            select(File).where(
+                (File.folder_path == source_path)
+                | (File.folder_path.like(f"{source_path}/%"))
+            )
+        )
+        files_to_update = list(file_result.scalars().all())
+
+        for file in files_to_update:
+            suffix = file.folder_path[len(source_path):]
+            file.folder_path = target_path + suffix
+
+        renamed_virtual_folder = False
+        try:
+            self.storage.rename_virtual_folder(source_path, target_path)
+            renamed_virtual_folder = True
+        except ValueError as exc:
+            if str(exc) == "文件夹不存在":
+                self.storage.create_virtual_folder(target_path)
+            else:
+                raise
+
+        await self.db.flush()
+
+        for file in files_to_update:
+            await self._sync_file_to_search_index(file)
+
+        await self.db.commit()
+
+        return {
+            "old_path": source_path,
+            "path": target_path,
+            "name": normalized_name,
+            "renamed_virtual_folder": renamed_virtual_folder,
         }
 
     async def delete_folder(self, folder_path: str) -> None:

@@ -142,6 +142,13 @@ export const fileApi = {
     },
 
     /**
+     * 重命名文件夹
+     */
+    async renameFolder(path: string, newName: string): Promise<any> {
+        return http.put('/files/folders/rename', { path, new_name: newName })
+    },
+
+    /**
      * 删除文件夹
      */
     async deleteFolder(path: string): Promise<any> {
@@ -160,5 +167,12 @@ export const fileApi = {
      */
     async moveFile(id: number, targetFolder: string): Promise<any> {
         return http.put(`/files/${id}/move`, { target_folder: targetFolder })
+    },
+
+    /**
+     * 重命名文件
+     */
+    async renameFile(id: number, filename: string): Promise<any> {
+        return http.put(`/files/${id}/rename`, { filename })
     },
 }

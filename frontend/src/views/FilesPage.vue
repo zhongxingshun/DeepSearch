@@ -6,6 +6,15 @@
         <el-button v-if="isAdmin" type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
           新建文件夹
         </el-button>
+        <el-button
+          v-if="isAdmin && currentFolder !== '/'"
+          type="info"
+          plain
+          :icon="EditPen"
+          @click="openRenameFolderDialog({ path: currentFolder, name: currentFolder.split('/').filter(Boolean).pop() || '' })"
+        >
+          重命名当前文件夹
+        </el-button>
         <el-button type="primary" :icon="Upload" @click="showUpload = true">
           上传文件
         </el-button>
@@ -102,6 +111,16 @@
           <div class="subfolder-name">{{ folder.name }}</div>
           <div class="subfolder-count">{{ folder.file_count }} 个文件</div>
         </div>
+        <el-button
+          v-if="isAdmin"
+          class="subfolder-rename"
+          link
+          type="primary"
+          :icon="EditPen"
+          @click.stop="openRenameFolderDialog(folder)"
+        >
+          重命名
+        </el-button>
         <el-button
           v-if="isAdmin"
           class="subfolder-delete"
@@ -223,10 +242,19 @@
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="380" fixed="right">
         <template #default="{ row }">
           <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
             预览
+          </el-button>
+          <el-button
+            v-if="isAdmin"
+            size="small"
+            link
+            type="primary"
+            @click="openRenameFileDialog(row)"
+          >
+            重命名
           </el-button>
           <el-button
             v-if="row.source_url"
@@ -304,6 +332,12 @@
             </div>
           </div>
           <div class="preview-actions">
+            <el-button
+              v-if="isAdmin"
+              @click="openRenameFileDialog(previewFile)"
+            >
+              重命名文件
+            </el-button>
             <el-button v-if="previewFile.source_url" @click="copySourceUrl(previewFile.source_url)">
               源链接
             </el-button>
@@ -544,6 +578,46 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showRenameFolderDialog" title="重命名文件夹" width="440px">
+      <el-form label-width="90px">
+        <el-form-item label="当前路径">
+          <span>{{ renameFolderTarget?.path || '-' }}</span>
+        </el-form-item>
+        <el-form-item label="新名称">
+          <el-input
+            v-model="renameFolderForm.new_name"
+            placeholder="请输入新的文件夹名称"
+            maxlength="100"
+            @keyup.enter="handleRenameFolder"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRenameFolderDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleRenameFolder">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showRenameFileDialog" title="重命名文件" width="460px">
+      <el-form label-width="80px">
+        <el-form-item label="当前文件">
+          <span>{{ renameFileTarget?.display_name || renameFileTarget?.filename || '-' }}</span>
+        </el-form-item>
+        <el-form-item label="新文件名">
+          <el-input
+            v-model="renameFileForm.filename"
+            placeholder="请输入新的文件名"
+            maxlength="255"
+            @keyup.enter="handleRenameFile"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRenameFileDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleRenameFile">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="showSourceUrlDialog" title="设置源链接" width="520px">
       <el-form label-width="80px">
         <el-form-item label="文件">
@@ -586,7 +660,7 @@ import {
   Upload, Folder, Search, Refresh, Loading, Warning, Document,
   Picture, Tickets, UploadFilled, FolderOpened,
   CircleCheckFilled, CircleCloseFilled, RefreshRight, HomeFilled,
-  FolderAdd, Delete,
+  FolderAdd, Delete, EditPen,
 } from '@element-plus/icons-vue'
 
 const loading = ref(false)
@@ -620,6 +694,11 @@ const subfolders = ref<any[]>([])
 const allFolders = ref<any[]>([])
 const showCreateFolder = ref(false)
 const newFolderName = ref('')
+const showRenameFolderDialog = ref(false)
+const renameFolderTarget = ref<{ path: string; name: string } | null>(null)
+const renameFolderForm = reactive({
+  new_name: '',
+})
 
 // 面包屑
 const breadcrumbSegments = computed(() => {
@@ -657,6 +736,11 @@ const failedFolderItems = computed(() =>
 const showMove = ref(false)
 const moveFile = ref<FileItem | null>(null)
 const moveTargetFolder = ref('')
+const showRenameFileDialog = ref(false)
+const renameFileTarget = ref<FileItem | null>(null)
+const renameFileForm = reactive({
+  filename: '',
+})
 
 const filters = reactive({
   keyword: '',
@@ -727,6 +811,18 @@ const openSourceUrlDialog = (file: FileItem) => {
   sourceUrlTargetFile.value = file
   sourceUrlForm.source_url = file.source_url || ''
   showSourceUrlDialog.value = true
+}
+
+const openRenameFolderDialog = (folder: { path: string; name: string }) => {
+  renameFolderTarget.value = folder
+  renameFolderForm.new_name = folder.name
+  showRenameFolderDialog.value = true
+}
+
+const openRenameFileDialog = (file: FileItem) => {
+  renameFileTarget.value = file
+  renameFileForm.filename = file.display_name || file.filename
+  showRenameFileDialog.value = true
 }
 
 // 加载文件列表
@@ -1159,6 +1255,40 @@ const handleCreateFolder = async () => {
   }
 }
 
+const handleRenameFolder = async () => {
+  if (!renameFolderTarget.value) return
+
+  const nextName = renameFolderForm.new_name.trim().replace(/^\/+|\/+$/g, '')
+  if (!nextName) {
+    ElMessage.warning('请输入新的文件夹名称')
+    return
+  }
+  if (nextName.includes('/')) {
+    ElMessage.warning('文件夹名称不能包含 /')
+    return
+  }
+
+  try {
+    const res = await fileApi.renameFolder(renameFolderTarget.value.path, nextName)
+    const nextPath = res.data?.path || renameFolderTarget.value.path
+    const prevPath = renameFolderTarget.value.path
+
+    if (currentFolder.value === prevPath) {
+      currentFolder.value = nextPath
+    }
+
+    showRenameFolderDialog.value = false
+    renameFolderTarget.value = null
+    renameFolderForm.new_name = ''
+    ElMessage.success('文件夹重命名成功')
+    loadFiles()
+    loadSubfolders()
+    loadAllFolders()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '文件夹重命名失败')
+  }
+}
+
 const deleteFolder = async (folder: { path: string; name: string }) => {
   try {
     const summaryRes = await fileApi.getFolderDeleteSummary(folder.path)
@@ -1193,6 +1323,48 @@ const deleteFolder = async (folder: { path: string; name: string }) => {
       return
     }
     ElMessage.error('删除文件夹失败')
+  }
+}
+
+const handleRenameFile = async () => {
+  if (!renameFileTarget.value) return
+
+  const nextFilename = renameFileForm.filename.trim()
+  if (!nextFilename) {
+    ElMessage.warning('请输入新的文件名')
+    return
+  }
+  if (nextFilename.includes('/')) {
+    ElMessage.warning('文件名不能包含 /')
+    return
+  }
+
+  try {
+    const res = await fileApi.renameFile(renameFileTarget.value.id, nextFilename)
+    const updatedFilename = res.data?.filename || nextFilename
+    const updatedDisplayName = res.data?.display_name || updatedFilename
+    const targetId = renameFileTarget.value.id
+
+    files.value = files.value.map((file) =>
+      file.id === targetId
+        ? { ...file, filename: updatedFilename, display_name: updatedDisplayName }
+        : file
+    )
+
+    if (previewFile.value?.id === targetId) {
+      previewFile.value = {
+        ...previewFile.value,
+        filename: updatedFilename,
+        display_name: updatedDisplayName,
+      }
+    }
+
+    showRenameFileDialog.value = false
+    renameFileTarget.value = null
+    renameFileForm.filename = ''
+    ElMessage.success('文件重命名成功')
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '文件重命名失败')
   }
 }
 
@@ -1565,6 +1737,10 @@ onBeforeUnmount(() => {
 
 .subfolder-delete {
   opacity: 0.8;
+}
+
+.subfolder-rename {
+  opacity: 0.9;
 }
 
 .filter-bar {

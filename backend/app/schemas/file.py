@@ -82,6 +82,11 @@ class FileMoveRequest(BaseModel):
     target_folder: str = Field(..., description="目标文件夹路径")
 
 
+class FileRenameRequest(BaseModel):
+    """文件重命名请求"""
+    filename: str = Field(..., min_length=1, max_length=255, description="新的文件名")
+
+
 class FileSourceUrlUpdateRequest(BaseModel):
     """文件源链接更新请求"""
     source_url: Optional[str] = Field(None, description="源链接，可为空")
@@ -105,6 +110,12 @@ class FolderListResponse(BaseModel):
 class FolderCreateRequest(BaseModel):
     """创建文件夹请求"""
     path: str = Field(..., description="文件夹路径")
+
+
+class FolderRenameRequest(BaseModel):
+    """重命名文件夹请求"""
+    path: str = Field(..., description="当前文件夹路径")
+    new_name: str = Field(..., min_length=1, max_length=100, description="新的文件夹名称")
 
 
 class FileBatchDeleteRequest(BaseModel):

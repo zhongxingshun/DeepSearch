@@ -20,10 +20,12 @@ from app.schemas.file import (
     FileUploadResponse,
     FileBatchDeleteRequest,
     FileMoveRequest,
+    FileRenameRequest,
     FileSourceUrlUpdateRequest,
     FolderCreateRequest,
     FolderInfo,
     FolderListResponse,
+    FolderRenameRequest,
 )
 from app.schemas.common import ResponseBase, PaginationMeta
 from app.services.file_service import FileService
@@ -283,6 +285,35 @@ async def create_folder(
     return ResponseBase(
         success=True,
         message=f"文件夹创建成功: {folder['path']}",
+    )
+
+
+@router.put("/folders/rename", response_model=ResponseBase)
+async def rename_folder(
+    body: FolderRenameRequest,
+    current_user: User = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """重命名文件夹"""
+    file_service = FileService(db)
+
+    try:
+        result = await file_service.rename_folder(body.path, body.new_name)
+    except ValueError as e:
+        detail = str(e)
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if detail == "文件夹不存在"
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=detail,
+        )
+
+    return ResponseBase(
+        success=True,
+        message="文件夹重命名成功",
+        data=result,
     )
 
 
@@ -650,10 +681,49 @@ async def move_file(
             message=f"文件已移动到 {body.target_folder}",
         )
     except ValueError as e:
+        detail = str(e)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if detail == "文件不存在"
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=detail,
         )
+
+
+@router.put("/{file_id}/rename", response_model=ResponseBase)
+async def rename_file(
+    file_id: int,
+    body: FileRenameRequest,
+    current_user: User = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """重命名单个文件"""
+    file_service = FileService(db)
+
+    try:
+        file = await file_service.rename_file(file_id, body.filename)
+    except ValueError as e:
+        detail = str(e)
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if detail == "文件不存在"
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=detail,
+        )
+
+    return ResponseBase(
+        success=True,
+        message="文件重命名成功",
+        data={
+            "id": file.id,
+            "filename": file.filename,
+            "display_name": file.display_name,
+        },
+    )
 
 
 @router.put("/{file_id}/source-url", response_model=ResponseBase)

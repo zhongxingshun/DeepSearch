@@ -55,6 +55,7 @@ class MeilisearchClient:
         "file_type",
         "file_size",
         "file_path",
+        "folder_path",
         "content",
         "created_at",
         "uploaded_by",
@@ -267,6 +268,12 @@ class MeilisearchClient:
         """删除文档"""
         index = self.get_index()
         task = index.delete_document(doc_id)
+        return str(task.task_uid)
+
+    async def update_document(self, document: Dict[str, Any]) -> str:
+        """更新单个文档"""
+        index = self.get_index()
+        task = index.add_documents([document], primary_key="id")
         return str(task.task_uid)
 
     async def search(

@@ -73,6 +73,28 @@ class FileStorageService:
 
         disk_path.rmdir()
 
+    def rename_virtual_folder(self, source_path: str, target_path: str) -> tuple[str, str]:
+        """重命名虚拟文件夹（保留子目录结构）"""
+        source = self.normalize_folder_path(source_path)
+        target = self.normalize_folder_path(target_path)
+
+        if source == "/":
+            raise ValueError("根目录不允许重命名")
+        if source == target:
+            return source, target
+
+        source_disk_path = self.get_virtual_folder_disk_path(source)
+        if not source_disk_path.exists():
+            raise ValueError("文件夹不存在")
+
+        target_disk_path = self.get_virtual_folder_disk_path(target)
+        if target_disk_path.exists():
+            raise ValueError("目标文件夹已存在")
+
+        target_disk_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source_disk_path), str(target_disk_path))
+        return source, target
+
     def list_virtual_folders(self) -> list[str]:
         """列出所有虚拟文件夹路径"""
         folders: list[str] = []
