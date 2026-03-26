@@ -6,15 +6,6 @@
         <el-button v-if="isAdmin" type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
           {{ t('files.newFolder') }}
         </el-button>
-        <el-button
-          v-if="isAdmin && currentFolder !== '/'"
-          type="info"
-          plain
-          :icon="EditPen"
-          @click="openRenameFolderDialog({ path: currentFolder, name: currentFolder.split('/').filter(Boolean).pop() || '' })"
-        >
-          {{ t('files.renameCurrentFolder') }}
-        </el-button>
         <el-button type="primary" :icon="Upload" @click="showUpload = true">
           {{ t('files.uploadFile') }}
         </el-button>
