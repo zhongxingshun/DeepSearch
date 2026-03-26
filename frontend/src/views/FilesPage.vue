@@ -699,6 +699,16 @@ const refreshFilePageData = () => {
   loadSubfolders()
 }
 
+const joinFolderPath = (...segments: Array<string | undefined>) => {
+  const parts = segments
+    .filter((segment): segment is string => !!segment)
+    .flatMap((segment) => segment.split('/'))
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+
+  return parts.length ? `/${parts.join('/')}` : '/'
+}
+
 const extractErrorMessage = (error: any, fallback = '上传失败，请稍后重试') =>
   error?.response?.data?.detail || error?.response?.data?.message || fallback
 
@@ -919,6 +929,9 @@ const handleFolderSelected = (event: Event) => {
 
 // 执行文件夹上传
 const handleFolderUpload = async () => {
+  const baseFolderPath = joinFolderPath(currentFolder.value, folderName.value)
+  await fileApi.createFolder(baseFolderPath)
+
   await uploadFolderItems(
     folderFiles.value.filter((item) => item.status === 'pending'),
     true
@@ -944,10 +957,14 @@ const uploadFolderItems = async (items: any[], resetCounters = false) => {
     item.errorMessage = ''
     
     try {
+      const relativeParts = item.relativePath.split('/').filter(Boolean)
+      const relativeDirectory = relativeParts.slice(0, -1).join('/')
+      const targetFolderPath = joinFolderPath(currentFolder.value, relativeDirectory)
+
       const res = await fileApi.uploadFile(
         item.file,
         undefined,
-        currentFolder.value !== '/' ? currentFolder.value : undefined
+        targetFolderPath !== '/' ? targetFolderPath : undefined
       )
 
       if (res.is_duplicate) {
