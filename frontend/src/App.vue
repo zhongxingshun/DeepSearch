@@ -1,10 +1,12 @@
-<script setup lang="ts">
-// App.vue 作为根组件
-</script>
-
 <template>
-  <router-view />
+  <el-config-provider :locale="elementLocale">
+    <router-view />
+  </el-config-provider>
 </template>
+
+<script setup lang="ts">
+import { elementLocale } from '@/i18n'
+</script>
 
 <style>
 #app {

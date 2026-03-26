@@ -1,7 +1,7 @@
 <template>
   <div class="stats-page page-container">
     <div class="page-header">
-      <h1>系统统计</h1>
+      <h1>{{ t('stats.title') }}</h1>
     </div>
     
     <!-- 概览卡片 -->
@@ -12,7 +12,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ fileStats.total_files || 0 }}</div>
-          <div class="stat-label">总文件数</div>
+          <div class="stat-label">{{ t('stats.totalFiles') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -21,7 +21,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ fileStats.total_size_human || '0 B' }}</div>
-          <div class="stat-label">存储空间</div>
+          <div class="stat-label">{{ t('stats.storage') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -30,7 +30,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ userCount || 0 }}</div>
-          <div class="stat-label">用户数量</div>
+          <div class="stat-label">{{ t('stats.userCount') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -39,14 +39,14 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ searchCount || 0 }}</div>
-          <div class="stat-label">今日搜索</div>
+          <div class="stat-label">{{ t('stats.todaySearches') }}</div>
         </div>
       </div>
     </div>
     
     <!-- 文件类型分布 -->
     <div class="card mt-4">
-      <h3>文件类型分布</h3>
+      <h3>{{ t('stats.fileTypeDistribution') }}</h3>
       <div class="type-grid">
         <div v-for="(count, type) in fileStats.by_type" :key="type" class="type-item">
           <div class="type-bar" :style="{ width: getPercent(count) + '%' }"></div>
@@ -58,7 +58,7 @@
     
     <!-- 索引状态 -->
     <div class="card mt-4">
-      <h3>索引状态</h3>
+      <h3>{{ t('stats.indexStatus') }}</h3>
       <div class="status-grid">
         <div class="status-item" v-for="(count, status) in fileStats.by_status" :key="status">
           <el-tag :type="getStatusType(status as string)" size="large">
@@ -75,10 +75,12 @@ import { ref, onMounted } from 'vue'
 import { fileApi } from '@/api/files'
 import http from '@/api/http'
 import { Folder, Upload, User, Search } from '@element-plus/icons-vue'
+import { useI18n } from '@/i18n'
 
 const fileStats = ref<any>({})
 const userCount = ref(0)
 const searchCount = ref(0)
+const { t } = useI18n()
 
 const loadStats = async () => {
   try {
@@ -107,7 +109,10 @@ const getStatusType = (status: string) => {
 
 const getStatusText = (status: string) => {
   const texts: Record<string, string> = {
-    pending: '待处理', processing: '处理中', completed: '已完成', failed: '失败',
+    pending: t('stats.pending'),
+    processing: t('stats.processing'),
+    completed: t('stats.completed'),
+    failed: t('stats.failed'),
   }
   return texts[status] || status
 }

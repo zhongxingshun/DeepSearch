@@ -3,11 +3,17 @@
     <div class="login-container">
       <!-- Logo -->
       <div class="login-header">
+        <div class="language-switcher">
+          <el-select v-model="locale" size="small" @change="handleLocaleChange">
+            <el-option value="zh-CN" :label="t('common.chinese')" />
+            <el-option value="en-US" :label="t('common.english')" />
+          </el-select>
+        </div>
         <div class="logo">
           <el-icon :size="48" color="#409eff"><Search /></el-icon>
         </div>
         <h1>DeepSearch</h1>
-        <p class="subtitle">企业级全格式深度搜索系统</p>
+        <p class="subtitle">{{ t('login.subtitle') }}</p>
       </div>
       
       <!-- 登录表单 -->
@@ -19,29 +25,29 @@
           label-position="top"
           @submit.prevent="handleLogin"
         >
-          <el-form-item label="用户名" prop="username">
+          <el-form-item :label="t('login.username')" prop="username">
             <el-input
               v-model="form.username"
               :prefix-icon="User"
-              placeholder="请输入用户名"
+              :placeholder="t('login.enterUsername')"
               size="large"
               autofocus
             />
           </el-form-item>
           
-          <el-form-item label="密码" prop="password">
+          <el-form-item :label="t('login.password')" prop="password">
             <el-input
               v-model="form.password"
               :prefix-icon="Lock"
               type="password"
-              placeholder="请输入密码"
+              :placeholder="t('login.enterPassword')"
               size="large"
               show-password
             />
           </el-form-item>
           
           <el-form-item>
-            <el-checkbox v-model="rememberMe">记住我</el-checkbox>
+            <el-checkbox v-model="rememberMe">{{ t('login.rememberMe') }}</el-checkbox>
           </el-form-item>
           
           <el-button
@@ -51,7 +57,7 @@
             :loading="loading"
             class="login-btn"
           >
-            {{ loading ? '登录中...' : '登 录' }}
+            {{ loading ? t('login.loggingIn') : t('login.login') }}
           </el-button>
         </el-form>
       </el-card>
@@ -77,10 +83,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Search, User, Lock } from '@element-plus/icons-vue'
+import { useI18n } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const { locale, setLocale, t } = useI18n()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -93,12 +101,16 @@ const form = reactive({
 
 const rules: FormRules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { required: true, message: t('login.usernameRequired'), trigger: 'blur' },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, message: '密码长度不能少于8位', trigger: 'blur' },
+    { required: true, message: t('login.passwordRequired'), trigger: 'blur' },
+    { min: 8, message: t('login.passwordMin'), trigger: 'blur' },
   ],
+}
+
+const handleLocaleChange = (value: 'zh-CN' | 'en-US') => {
+  setLocale(value)
 }
 
 const handleLogin = async () => {
@@ -115,13 +127,13 @@ const handleLogin = async () => {
       password: form.password,
     })
     
-    ElMessage.success('登录成功')
+    ElMessage.success(t('login.loginSuccess'))
     
     // 跳转到之前的页面或首页
     const redirect = route.query.redirect as string
     router.push(redirect || '/')
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || '登录失败，请检查用户名和密码')
+    ElMessage.error(error.response?.data?.detail || t('login.loginFailed'))
   } finally {
     loading.value = false
   }
@@ -150,6 +162,12 @@ const handleLogin = async () => {
 .login-header {
   text-align: center;
   margin-bottom: 32px;
+
+  .language-switcher {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+  }
   
   .logo {
     width: 80px;

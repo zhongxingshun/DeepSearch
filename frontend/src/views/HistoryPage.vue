@@ -1,38 +1,38 @@
 <template>
   <div class="history-page page-container">
     <div class="page-header">
-      <h1>搜索历史</h1>
+      <h1>{{ t('history.title') }}</h1>
       <el-button type="danger" plain @click="clearAll" :disabled="!histories.length">
-        清空全部
+        {{ t('history.clearAll') }}
       </el-button>
     </div>
     
     <div class="card" v-loading="loading">
       <el-table :data="histories" stripe>
         <el-table-column type="index" width="60" />
-        <el-table-column label="关键词" prop="keyword" min-width="200">
+        <el-table-column :label="t('history.keyword')" prop="keyword" min-width="200">
           <template #default="{ row }">
             <el-link type="primary" @click="searchKeyword(row.keyword)">
               {{ row.keyword }}
             </el-link>
           </template>
         </el-table-column>
-        <el-table-column label="结果数" prop="result_count" width="100" />
-        <el-table-column label="搜索时间" width="180">
+        <el-table-column :label="t('history.resultCount')" prop="result_count" width="100" />
+        <el-table-column :label="t('history.searchedAt')" width="180">
           <template #default="{ row }">
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100">
+        <el-table-column :label="t('history.actions')" width="100">
           <template #default="{ row }">
             <el-button size="small" link type="danger" @click="deleteHistory(row.id)">
-              删除
+              {{ t('common.delete') }}
             </el-button>
           </template>
         </el-table-column>
       </el-table>
       
-      <el-empty v-if="!loading && !histories.length" description="暂无搜索历史" />
+      <el-empty v-if="!loading && !histories.length" :description="t('history.empty')" />
       
       <div class="pagination" v-if="total > pageSize">
         <el-pagination
@@ -54,8 +54,10 @@ import { searchApi } from '@/api/search'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import type { SearchHistoryItem } from '@/types'
+import { useI18n } from '@/i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 const loading = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
@@ -69,7 +71,7 @@ const loadHistory = async () => {
     histories.value = response.data
     total.value = response.total
   } catch {
-    ElMessage.error('加载搜索历史失败')
+    ElMessage.error(t('history.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -81,14 +83,14 @@ const searchKeyword = (keyword: string) => {
 
 const deleteHistory = async (id: number) => {
   await searchApi.deleteHistory(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('history.deleted'))
   loadHistory()
 }
 
 const clearAll = async () => {
-  await ElMessageBox.confirm('确定要清空所有搜索历史吗？', '提示', { type: 'warning' })
+  await ElMessageBox.confirm(t('history.confirmClear'), t('history.title'), { type: 'warning' })
   await searchApi.clearHistory()
-  ElMessage.success('已清空')
+  ElMessage.success(t('history.cleared'))
   loadHistory()
 }
 

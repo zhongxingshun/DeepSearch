@@ -6,7 +6,7 @@
         <el-input
           v-model="keyword"
           size="large"
-          placeholder="输入关键词搜索文档内容..."
+          :placeholder="t('searchPage.placeholder')"
           class="search-input"
           clearable
           @keyup.enter="handleSearch"
@@ -17,7 +17,7 @@
           </template>
           <template #append>
             <el-button type="primary" :loading="loading" @click="handleSearch">
-              搜索
+              {{ t('common.search') }}
             </el-button>
           </template>
         </el-input>
@@ -32,27 +32,27 @@
           >
             <el-icon :size="14"><Clock /></el-icon>
             <span>{{ item.keyword }}</span>
-            <el-tag size="small" v-if="item.type === 'popular'">热门</el-tag>
+            <el-tag size="small" v-if="item.type === 'popular'">{{ t('searchPage.suggestionPopular') }}</el-tag>
           </div>
         </div>
       </div>
       
       <!-- 筛选条件 -->
       <div class="filters">
-        <el-select v-model="filters.file_type" placeholder="文件类型" clearable size="small">
+        <el-select v-model="filters.file_type" :placeholder="t('searchPage.fileType')" clearable size="small">
           <el-option label="PDF" value="pdf" />
           <el-option label="Word" value="word" />
           <el-option label="Excel" value="excel" />
           <el-option label="PowerPoint" value="powerpoint" />
-          <el-option label="图片" value="image" />
-          <el-option label="文本" value="text" />
-          <el-option label="压缩包" value="archive" />
+          <el-option :label="t('searchPage.type.image')" value="image" />
+          <el-option :label="t('searchPage.type.text')" value="text" />
+          <el-option :label="t('searchPage.type.archive')" value="archive" />
         </el-select>
         
-        <el-select v-model="filters.sort_by" placeholder="排序方式" clearable size="small">
-          <el-option label="相关性" value="" />
-          <el-option label="时间最新" value="created_at" />
-          <el-option label="文件最大" value="file_size" />
+        <el-select v-model="filters.sort_by" :placeholder="t('searchPage.sortBy')" clearable size="small">
+          <el-option :label="t('searchPage.relevance')" value="" />
+          <el-option :label="t('searchPage.newest')" value="created_at" />
+          <el-option :label="t('searchPage.largest')" value="file_size" />
         </el-select>
       </div>
     </div>
@@ -63,10 +63,10 @@
         <!-- 结果统计 -->
         <div class="results-header">
           <span class="results-count">
-            找到 <strong>{{ total }}</strong> 个结果
+            {{ t('searchPage.resultCount', { count: total }) }}
           </span>
           <span class="results-time">
-            耗时 {{ queryTime }} ms
+            {{ t('searchPage.queryTime', { time: queryTime }) }}
           </span>
         </div>
         
@@ -96,11 +96,11 @@
               <div class="result-actions">
                 <el-button v-if="supportsPreview(result.file_type)" size="small" type="primary" link @click="openPreview(result)">
                   <el-icon><View /></el-icon>
-                  预览
+                  {{ t('common.preview') }}
                 </el-button>
                 <el-button size="small" type="primary" link @click.stop="downloadFile(result)">
                   <el-icon><Download /></el-icon>
-                  下载
+                  {{ t('common.download') }}
                 </el-button>
               </div>
             </div>
@@ -116,7 +116,7 @@
         </div>
         
         <!-- 无结果 -->
-        <el-empty v-else description="没有找到匹配的文档" />
+        <el-empty v-else :description="t('searchPage.empty')" />
         
         <!-- 分页 -->
         <div class="pagination" v-if="total > pageSize">
@@ -135,11 +135,11 @@
         <div class="welcome-icon">
           <el-icon :size="80" color="#409eff"><Search /></el-icon>
         </div>
-        <h2>开始搜索</h2>
-        <p>输入关键词，在所有文档中深度搜索内容</p>
+        <h2>{{ t('searchPage.startSearch') }}</h2>
+        <p>{{ t('searchPage.searchHint') }}</p>
         
         <div class="hot-keywords" v-if="hotKeywords.length">
-          <h4>热门搜索</h4>
+          <h4>{{ t('searchPage.hotKeywords') }}</h4>
           <div class="keyword-tags">
             <el-tag
               v-for="kw in hotKeywords"
@@ -158,7 +158,7 @@
     <!-- 预览抽屉 -->
     <el-drawer
       v-model="showPreview"
-      :title="previewFile?.filename || '文件预览'"
+      :title="previewFile?.filename || t('searchPage.previewTitle')"
       size="55%"
       direction="rtl"
       :close-on-click-modal="true"
@@ -181,7 +181,7 @@
           </div>
           <el-button type="primary" @click="downloadFile(previewFile)">
             <el-icon><Download /></el-icon>
-            下载文件
+            {{ t('searchPage.downloadFile') }}
           </el-button>
         </div>
 
@@ -196,7 +196,7 @@
             />
             <div v-if="previewError" class="preview-error">
               <el-icon :size="48" color="#c0c4cc"><Picture /></el-icon>
-              <p>图片加载失败</p>
+              <p>{{ t('searchPage.imageLoadFailed') }}</p>
             </div>
           </div>
 
@@ -212,14 +212,14 @@
           <div v-else class="preview-text">
             <div class="preview-text-label">
               <el-icon><Document /></el-icon>
-              搜索匹配内容
+              {{ t('searchPage.matchContent') }}
             </div>
             <div class="preview-text-content" v-html="previewFile.content_snippet"></div>
             <div class="preview-no-visual">
               <el-icon :size="40" color="#dcdfe6"><Document /></el-icon>
-              <p>该文件类型暂不支持可视化预览</p>
+              <p>{{ t('searchPage.noVisualPreview') }}</p>
               <el-button type="primary" plain @click="downloadFile(previewFile)">
-                下载后查看完整内容
+                {{ t('searchPage.downloadToView') }}
               </el-button>
             </div>
           </div>
@@ -236,6 +236,7 @@ import { fileApi } from '@/api/files'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import type { SearchResult } from '@/types'
+import { useI18n } from '@/i18n'
 import {
   Search, Clock, Download, Document, Picture, Tickets, View, Folder,
 } from '@element-plus/icons-vue'
@@ -251,6 +252,7 @@ const results = ref<SearchResult[]>([])
 const suggestions = ref<any[]>([])
 const showSuggestions = ref(false)
 const hotKeywords = ref<any[]>([])
+const { t } = useI18n()
 
 // 预览状态
 const showPreview = ref(false)
@@ -265,7 +267,7 @@ const filters = reactive({
 // 搜索
 const handleSearch = async () => {
   if (!keyword.value.trim()) {
-    ElMessage.warning('请输入搜索关键词')
+    ElMessage.warning(t('searchPage.enterKeyword'))
     return
   }
   
@@ -286,7 +288,7 @@ const handleSearch = async () => {
     total.value = response.total
     queryTime.value = response.query_time_ms
   } catch (error) {
-    ElMessage.error('搜索失败')
+    ElMessage.error(t('searchPage.searchFailed'))
   } finally {
     loading.value = false
   }
@@ -375,13 +377,13 @@ const getFileIcon = (type: string) => {
 
 const getFileTypeLabel = (type: string): string => {
   const labels: Record<string, string> = {
-    image: '图片',
-    pdf: 'PDF',
-    word: 'Word',
-    excel: 'Excel',
-    powerpoint: 'PPT',
-    text: '文本',
-    archive: '压缩包',
+    image: t('searchPage.type.image'),
+    pdf: t('searchPage.type.pdf'),
+    word: t('searchPage.type.word'),
+    excel: t('searchPage.type.excel'),
+    powerpoint: t('searchPage.type.powerpoint'),
+    text: t('searchPage.type.text'),
+    archive: t('searchPage.type.archive'),
   }
   return labels[type] || type
 }

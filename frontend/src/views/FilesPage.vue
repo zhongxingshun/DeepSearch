@@ -1,10 +1,10 @@
 <template>
   <div class="files-page page-container">
     <div class="page-header">
-      <h1>文件管理</h1>
+      <h1>{{ t('files.title') }}</h1>
       <div class="header-actions">
         <el-button v-if="isAdmin" type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
-          新建文件夹
+          {{ t('files.newFolder') }}
         </el-button>
         <el-button
           v-if="isAdmin && currentFolder !== '/'"
@@ -13,13 +13,13 @@
           :icon="EditPen"
           @click="openRenameFolderDialog({ path: currentFolder, name: currentFolder.split('/').filter(Boolean).pop() || '' })"
         >
-          重命名当前文件夹
+          {{ t('files.renameCurrentFolder') }}
         </el-button>
         <el-button type="primary" :icon="Upload" @click="showUpload = true">
-          上传文件
+          {{ t('files.uploadFile') }}
         </el-button>
         <el-button type="success" :icon="FolderOpened" @click="triggerFolderUpload">
-          上传文件夹
+          {{ t('files.uploadFolder') }}
         </el-button>
         <!-- 隐藏的文件夹选择 input -->
         <input
@@ -42,7 +42,7 @@
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.total_files || 0 }}</div>
-          <div class="stat-label">总文件数</div>
+          <div class="stat-label">{{ t('files.totalFiles') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -51,7 +51,7 @@
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.total_size_human || '0 B' }}</div>
-          <div class="stat-label">总大小</div>
+          <div class="stat-label">{{ t('files.totalSize') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -60,7 +60,7 @@
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.by_status?.pending || 0 }}</div>
-          <div class="stat-label">待处理</div>
+          <div class="stat-label">{{ t('files.pending') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -69,7 +69,7 @@
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.by_status?.failed || 0 }}</div>
-          <div class="stat-label">处理失败</div>
+          <div class="stat-label">{{ t('files.processingFailed') }}</div>
         </div>
       </div>
     </div>
@@ -80,7 +80,7 @@
         <el-breadcrumb-item>
           <span class="breadcrumb-link" @click="navigateToFolder('/')">
             <el-icon :size="16"><HomeFilled /></el-icon>
-            全部文件
+            {{ t('files.allFiles') }}
           </span>
         </el-breadcrumb-item>
         <el-breadcrumb-item v-for="(segment, idx) in breadcrumbSegments" :key="idx">
@@ -93,8 +93,8 @@
         </el-breadcrumb-item>
       </el-breadcrumb>
       <span class="breadcrumb-count">
-        {{ total }} 个文件
-        <template v-if="subfolders.length > 0">，{{ subfolders.length }} 个文件夹</template>
+        {{ t('files.fileCount', { count: total }) }}
+        <template v-if="subfolders.length > 0">，{{ t('files.folderCount', { count: subfolders.length }) }}</template>
       </span>
     </div>
 
@@ -119,7 +119,7 @@
           :icon="EditPen"
           @click.stop="openRenameFolderDialog(folder)"
         >
-          重命名
+          {{ t('files.renameFolder') }}
         </el-button>
         <el-button
           v-if="isAdmin"
@@ -129,7 +129,7 @@
           :icon="Delete"
           @click.stop="deleteFolder(folder)"
         >
-          删除
+          {{ t('files.deleteFolder') }}
         </el-button>
       </div>
     </div>
@@ -138,40 +138,40 @@
     <div class="filter-bar card">
       <el-input
         v-model="filters.keyword"
-        placeholder="搜索文件名..."
+        :placeholder="t('files.searchFilename')"
         clearable
         :prefix-icon="Search"
         style="width: 250px"
         @keyup.enter="loadFiles"
       />
-      <el-select v-model="filters.file_type" placeholder="文件类型" clearable @change="loadFiles">
+      <el-select v-model="filters.file_type" :placeholder="t('searchPage.fileType')" clearable @change="loadFiles">
         <el-option label="PDF" value="pdf" />
         <el-option label="Word" value="word" />
         <el-option label="Excel" value="excel" />
         <el-option label="PowerPoint" value="powerpoint" />
-        <el-option label="图片" value="image" />
-        <el-option label="文本" value="text" />
-        <el-option label="压缩包" value="archive" />
+        <el-option :label="t('files.typeLabel.image')" value="image" />
+        <el-option :label="t('files.typeLabel.text')" value="text" />
+        <el-option :label="t('files.typeLabel.archive')" value="archive" />
       </el-select>
-      <el-select v-model="filters.status" placeholder="索引状态" clearable @change="loadFiles">
-        <el-option label="待处理" value="pending" />
-        <el-option label="处理中" value="processing" />
-        <el-option label="已完成" value="completed" />
-        <el-option label="失败" value="failed" />
+      <el-select v-model="filters.status" :placeholder="t('files.indexStatus')" clearable @change="loadFiles">
+        <el-option :label="t('files.status.pending')" value="pending" />
+        <el-option :label="t('files.status.processing')" value="processing" />
+        <el-option :label="t('files.status.completed')" value="completed" />
+        <el-option :label="t('files.status.failed')" value="failed" />
       </el-select>
-      <el-button :icon="Refresh" @click="loadFiles">刷新</el-button>
+      <el-button :icon="Refresh" @click="loadFiles">{{ t('common.refresh') }}</el-button>
       <el-button v-if="isAdmin && stats.by_status?.failed > 0" type="warning" :icon="RefreshRight" @click="retryAllFailed">
-        重试全部失败（{{ stats.by_status?.failed }}）
+        {{ t('files.retryAllFailed', { count: stats.by_status?.failed }) }}
       </el-button>
     </div>
 
     <div v-if="isAdmin && selectedFiles.length > 0" class="batch-bar card">
-      <span class="batch-summary">已选择 {{ selectedFiles.length }} 个文件</span>
+      <span class="batch-summary">{{ t('files.batchSelected', { count: selectedFiles.length }) }}</span>
       <div class="batch-actions">
         <el-button type="danger" :icon="Delete" @click="batchDeleteSelectedFiles">
-          批量删除
+          {{ t('files.batchDelete') }}
         </el-button>
-        <el-button @click="clearSelection">清空选择</el-button>
+        <el-button @click="clearSelection">{{ t('files.clearSelection') }}</el-button>
       </div>
     </div>
     
@@ -185,7 +185,7 @@
       @selection-change="handleSelectionChange"
     >
       <el-table-column v-if="isAdmin" type="selection" width="48" reserve-selection />
-      <el-table-column label="文件名" min-width="250">
+      <el-table-column :label="t('files.filename')" min-width="250">
         <template #default="{ row }">
           <div class="file-name-cell">
             <el-icon :size="20" :class="getFileTypeClass(row.file_type)">
@@ -195,7 +195,7 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="文件夹" width="180" v-if="!currentFolder || currentFolder === '/'">
+      <el-table-column :label="t('files.folder')" width="180" v-if="!currentFolder || currentFolder === '/'">
         <template #default="{ row }">
           <span
             v-if="row.folder_path && row.folder_path !== '/'"
@@ -205,10 +205,10 @@
             <el-icon :size="14"><FolderOpened /></el-icon>
             {{ row.folder_path }}
           </span>
-          <span v-else class="folder-tag root">根目录</span>
+          <span v-else class="folder-tag root">{{ t('files.rootFolder') }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="80" align="center">
+      <el-table-column :label="t('files.type')" width="80" align="center">
         <template #default="{ row }">
           <el-tooltip :content="getFileTypeLabel(row.file_type)" placement="top" :show-after="300">
             <div :class="['file-type-icon', `file-type-${row.file_type}`]">
@@ -219,8 +219,8 @@
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column label="大小" width="100" prop="file_size_human" />
-      <el-table-column label="状态" width="110">
+      <el-table-column :label="t('files.size')" width="100" prop="file_size_human" />
+      <el-table-column :label="t('files.statusLabel')" width="110">
         <template #default="{ row }">
           <el-tooltip
             v-if="shouldShowStatusDetail(row)"
@@ -237,15 +237,15 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="上传时间" width="160">
+      <el-table-column :label="t('files.uploadedAt')" width="160">
         <template #default="{ row }">
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="380" fixed="right">
+      <el-table-column :label="t('files.actions')" width="380" fixed="right">
         <template #default="{ row }">
           <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
-            预览
+            {{ t('common.preview') }}
           </el-button>
           <el-button
             v-if="isAdmin"
@@ -254,7 +254,7 @@
             type="primary"
             @click="openRenameFileDialog(row)"
           >
-            重命名
+            {{ t('common.rename') }}
           </el-button>
           <el-button
             v-if="row.source_url"
@@ -263,7 +263,7 @@
             type="primary"
             @click="copySourceUrl(row.source_url)"
           >
-            源链接
+            {{ t('files.sourceLink') }}
           </el-button>
           <el-button
             v-if="isAdmin"
@@ -272,13 +272,13 @@
             type="primary"
             @click="openSourceUrlDialog(row)"
           >
-            {{ row.source_url ? '编辑源链接' : '设置源链接' }}
+            {{ row.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
           </el-button>
           <el-button size="small" link type="primary" @click="downloadFile(row)">
-            下载
+            {{ t('common.download') }}
           </el-button>
           <el-button v-if="isAdmin" size="small" link type="primary" @click="showMoveDialog(row)">
-            移动
+            {{ t('common.move') }}
           </el-button>
           <el-button
             v-if="isAdmin && (row.index_status === 'failed' || row.index_status === 'parsed')"
@@ -287,10 +287,10 @@
             type="warning"
             @click="retryFile(row)"
           >
-            {{ row.index_status === 'failed' ? '重新上传' : '重新处理' }}
+            {{ row.index_status === 'failed' ? t('files.retryUpload') : t('files.reprocess') }}
           </el-button>
           <el-button v-if="isAdmin" size="small" link type="danger" @click="deleteFile(row)">
-            删除
+            {{ t('common.delete') }}
           </el-button>
         </template>
       </el-table-column>
@@ -311,7 +311,7 @@
 
     <el-drawer
       v-model="showPreview"
-      :title="previewFile?.display_name || previewFile?.filename || '文件预览'"
+      :title="previewFile?.display_name || previewFile?.filename || t('files.previewTitle')"
       size="55%"
       direction="rtl"
       :close-on-click-modal="true"
@@ -336,19 +336,19 @@
               v-if="isAdmin"
               @click="openRenameFileDialog(previewFile)"
             >
-              重命名文件
+              {{ t('files.fileRenameTitle') }}
             </el-button>
             <el-button v-if="previewFile.source_url" @click="copySourceUrl(previewFile.source_url)">
-              源链接
+              {{ t('files.sourceLink') }}
             </el-button>
             <el-button
               v-if="isAdmin"
               @click="openSourceUrlDialog(previewFile)"
             >
-              {{ previewFile.source_url ? '编辑源链接' : '设置源链接' }}
+              {{ previewFile.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
             </el-button>
             <el-button type="primary" @click="downloadFile(previewFile)">
-              下载文件
+              {{ t('files.downloadFile') }}
             </el-button>
           </div>
         </div>
@@ -362,7 +362,7 @@
             />
             <div v-if="previewError" class="preview-error">
               <el-icon :size="48" color="#c0c4cc"><Picture /></el-icon>
-              <p>图片加载失败</p>
+              <p>{{ t('files.imageLoadFailed') }}</p>
             </div>
           </div>
 
@@ -373,13 +373,13 @@
           <div v-else class="preview-text">
             <div class="preview-text-label">
               <el-icon><Document /></el-icon>
-              文件预览说明
+              {{ t('files.previewDescription') }}
             </div>
             <div class="preview-no-visual">
               <el-icon :size="40" color="#dcdfe6"><Document /></el-icon>
-              <p>该文件类型暂不支持可视化预览</p>
+              <p>{{ t('files.unsupportedPreview') }}</p>
               <el-button type="primary" plain @click="downloadFile(previewFile)">
-                下载后查看完整内容
+                {{ t('files.downloadToView') }}
               </el-button>
             </div>
           </div>
@@ -388,10 +388,10 @@
     </el-drawer>
     
     <!-- 上传对话框 -->
-    <el-dialog v-model="showUpload" :title="`上传文件到 ${currentFolder}`" width="500px">
+    <el-dialog v-model="showUpload" :title="t('files.uploadTo', { folder: currentFolder })" width="500px">
       <div class="upload-target-hint">
         <el-icon :size="14"><FolderOpened /></el-icon>
-        目标文件夹：<strong>{{ currentFolder }}</strong>
+        {{ t('files.targetFolder') }}<strong>{{ currentFolder }}</strong>
       </div>
       <el-upload
         ref="uploadRef"
@@ -408,43 +408,43 @@
         </div>
         <template #tip>
           <div class="el-upload__tip">
-            支持 PDF、Word、Excel、PPT、图片等格式，单文件最大 500MB
+            {{ t('files.uploadTip') }}
           </div>
         </template>
       </el-upload>
       <div v-if="uploadFailedItems.length > 0" class="upload-failed-list">
-        <div class="upload-failed-title">上传失败文件</div>
+        <div class="upload-failed-title">{{ t('files.uploadFailedFiles') }}</div>
         <div
           v-for="item in uploadFailedItems"
           :key="item.uid"
           class="upload-failed-item"
         >
           <span class="upload-failed-name">{{ item.name }}</span>
-          <span class="upload-failed-reason">{{ item.errorMessage || '上传失败，请稍后重试' }}</span>
+          <span class="upload-failed-reason">{{ item.errorMessage || t('files.sourceLinkSaveFailed') }}</span>
         </div>
       </div>
       <template #footer>
-        <el-button @click="showUpload = false">取消</el-button>
+        <el-button @click="showUpload = false">{{ t('common.cancel') }}</el-button>
         <el-button
           v-if="uploadFailedItems.length > 0"
           type="warning"
           :loading="uploading"
           @click="retryFailedUploadItems"
         >
-          重传失败项（{{ uploadFailedItems.length }}）
+          {{ t('files.retryFailedItems', { count: uploadFailedItems.length }) }}
         </el-button>
         <el-button type="primary" :loading="uploading" @click="handleUpload">
-          开始上传
+          {{ t('files.startUpload') }}
         </el-button>
       </template>
     </el-dialog>
     
     <!-- 文件夹上传对话框 -->
-    <el-dialog v-model="showFolderUpload" title="上传文件夹" width="650px" :close-on-click-modal="!folderUploading">
+    <el-dialog v-model="showFolderUpload" :title="t('files.folderUploadTitle')" width="650px" :close-on-click-modal="!folderUploading">
       <div v-if="folderName" class="folder-info">
         <el-icon :size="20" color="#409eff"><FolderOpened /></el-icon>
         <span class="folder-name">{{ folderName }}</span>
-        <el-tag size="small" type="info">{{ folderFiles.length }} 个文件</el-tag>
+        <el-tag size="small" type="info">{{ t('files.fileCount', { count: folderFiles.length }) }}</el-tag>
         <el-popover
           v-if="skippedCount > 0"
           placement="bottom"
@@ -453,21 +453,21 @@
         >
           <template #reference>
             <el-tag size="small" type="warning" class="skipped-tag">
-              {{ skippedCount }} 个已跳过
+              {{ t('files.skippedCount', { count: skippedCount }) }}
             </el-tag>
           </template>
           <div class="skipped-details">
-            <div class="skipped-title">跳过原因</div>
+            <div class="skipped-title">{{ t('files.skippedReason') }}</div>
             <div class="skipped-item">
-              <span>隐藏文件/临时文件</span>
+              <span>{{ t('files.skippedHidden') }}</span>
               <strong>{{ skippedStats.hidden }}</strong>
             </div>
             <div class="skipped-item">
-              <span>空文件</span>
+              <span>{{ t('files.skippedEmpty') }}</span>
               <strong>{{ skippedStats.empty }}</strong>
             </div>
             <div class="skipped-item">
-              <span>格式不支持</span>
+              <span>{{ t('files.skippedUnsupported') }}</span>
               <strong>{{ skippedStats.unsupported }}</strong>
             </div>
           </div>
@@ -476,7 +476,7 @@
       
       <div class="folder-file-list">
         <el-table :data="folderFiles" max-height="400" size="small" stripe>
-          <el-table-column label="文件路径" min-width="280">
+          <el-table-column :label="t('files.path')" min-width="280">
             <template #default="{ row }">
               <div class="folder-file-path">
                 <el-icon :size="14"><Document /></el-icon>
@@ -484,18 +484,18 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="大小" width="100">
+          <el-table-column :label="t('files.size')" width="100">
             <template #default="{ row }">
               {{ formatFileSize(row.file.size) }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="80" align="center">
+          <el-table-column :label="t('files.statusLabel')" width="80" align="center">
             <template #default="{ row }">
               <el-icon v-if="row.status === 'success'" color="#67c23a" :size="16"><CircleCheckFilled /></el-icon>
-              <span v-else-if="row.status === 'duplicate'" class="status-duplicate">重复</span>
+              <span v-else-if="row.status === 'duplicate'" class="status-duplicate">{{ t('files.status.duplicate') }}</span>
               <el-icon v-else-if="row.status === 'error'" color="#f56c6c" :size="16"><CircleCloseFilled /></el-icon>
               <el-icon v-else-if="row.status === 'uploading'" class="is-loading" color="#409eff" :size="16"><Loading /></el-icon>
-              <span v-else class="status-pending">待传</span>
+              <span v-else class="status-pending">{{ t('files.pending') }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -505,38 +505,38 @@
       <div v-if="folderUploading || folderUploadedCount > 0" class="folder-progress">
         <el-progress :percentage="folderProgress" :stroke-width="10" />
         <span class="progress-text">
-          {{ folderUploadedCount }}/{{ folderFiles.length }}
-          <span v-if="folderFailCount > 0" style="color: #f56c6c">（{{ folderFailCount }} 失败）</span>
+          {{ t('files.uploadProgress', { done: folderUploadedCount, total: folderFiles.length }) }}
+          <span v-if="folderFailCount > 0" style="color: #f56c6c">{{ t('files.failedCountInline', { count: folderFailCount }) }}</span>
         </span>
       </div>
       
       <template #footer>
-        <el-button @click="showFolderUpload = false" :disabled="folderUploading">取消</el-button>
+        <el-button @click="showFolderUpload = false" :disabled="folderUploading">{{ t('common.cancel') }}</el-button>
         <el-button
           v-if="failedFolderItems.length > 0"
           type="warning"
           :loading="folderUploading"
           @click="retryFailedFolderUploads"
         >
-          重传失败项（{{ failedFolderItems.length }}）
+          {{ t('files.retryFailedFolderItems', { count: failedFolderItems.length }) }}
         </el-button>
         <el-button type="primary" :loading="folderUploading" @click="handleFolderUpload" :disabled="folderProgress === 100">
-          {{ folderUploading ? '上传中...' : folderProgress === 100 ? '上传完成' : '开始上传' }}
+          {{ folderUploading ? t('files.uploading') : folderProgress === 100 ? t('files.uploadCompleted') : t('files.startUpload') }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 移动文件对话框 -->
-    <el-dialog v-model="showMove" title="移动文件到..." width="450px">
+    <el-dialog v-model="showMove" :title="t('files.moveTo')" width="450px">
       <div class="move-current">
-        当前位置：<el-tag>{{ moveFile?.folder_path || '/' }}</el-tag>
+        {{ t('files.currentLocation') }}<el-tag>{{ moveFile?.folder_path || '/' }}</el-tag>
       </div>
       <div class="move-target">
         <el-select
           v-model="moveTargetFolder"
           filterable
           allow-create
-          placeholder="选择或输入目标文件夹路径"
+          :placeholder="t('files.targetFolderPlaceholder')"
           style="width: 100%"
         >
           <el-option
@@ -547,102 +547,102 @@
           />
         </el-select>
         <div class="move-hint">
-          💡 可以输入新路径来创建文件夹，如 "/公司资料/合同"
+          {{ t('files.moveHint') }}
         </div>
       </div>
       <template #footer>
-        <el-button @click="showMove = false">取消</el-button>
+        <el-button @click="showMove = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleMoveFile" :disabled="!moveTargetFolder">
-          移动
+          {{ t('common.move') }}
         </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showCreateFolder" title="新建文件夹" width="420px">
+    <el-dialog v-model="showCreateFolder" :title="t('files.createFolderTitle')" width="420px">
       <el-form label-width="90px">
-        <el-form-item label="父目录">
+        <el-form-item :label="t('files.parentFolder')">
           <span>{{ currentFolder }}</span>
         </el-form-item>
-        <el-form-item label="文件夹名">
+        <el-form-item :label="t('files.folderName')">
           <el-input
             v-model="newFolderName"
-            placeholder="请输入文件夹名称"
+            :placeholder="t('files.folderNamePlaceholder')"
             maxlength="100"
             @keyup.enter="handleCreateFolder"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreateFolder = false">取消</el-button>
-        <el-button type="primary" @click="handleCreateFolder">创建</el-button>
+        <el-button @click="showCreateFolder = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleCreateFolder">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showRenameFolderDialog" title="重命名文件夹" width="440px">
+    <el-dialog v-model="showRenameFolderDialog" :title="t('files.folderRenameTitle')" width="440px">
       <el-form label-width="90px">
-        <el-form-item label="当前路径">
+        <el-form-item :label="t('files.currentPath')">
           <span>{{ renameFolderTarget?.path || '-' }}</span>
         </el-form-item>
-        <el-form-item label="新名称">
+        <el-form-item :label="t('files.newName')">
           <el-input
             v-model="renameFolderForm.new_name"
-            placeholder="请输入新的文件夹名称"
+            :placeholder="t('files.folderRenamePlaceholder')"
             maxlength="100"
             @keyup.enter="handleRenameFolder"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showRenameFolderDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleRenameFolder">保存</el-button>
+        <el-button @click="showRenameFolderDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleRenameFolder">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showRenameFileDialog" title="重命名文件" width="460px">
+    <el-dialog v-model="showRenameFileDialog" :title="t('files.fileRenameTitle')" width="460px">
       <el-form label-width="80px">
-        <el-form-item label="当前文件">
+        <el-form-item :label="t('files.currentFile')">
           <span>{{ renameFileTarget?.display_name || renameFileTarget?.filename || '-' }}</span>
         </el-form-item>
-        <el-form-item label="新文件名">
+        <el-form-item :label="t('files.newFilename')">
           <el-input
             v-model="renameFileForm.filename"
-            placeholder="请输入新的文件名"
+            :placeholder="t('files.newFilenamePlaceholder')"
             maxlength="255"
             @keyup.enter="handleRenameFile"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showRenameFileDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleRenameFile">保存</el-button>
+        <el-button @click="showRenameFileDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleRenameFile">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showSourceUrlDialog" title="设置源链接" width="520px">
+    <el-dialog v-model="showSourceUrlDialog" :title="t('files.sourceLinkTitle')" width="520px">
       <el-form label-width="80px">
-        <el-form-item label="文件">
+        <el-form-item :label="t('files.currentFile')">
           <span>{{ sourceUrlTargetFile?.display_name || sourceUrlTargetFile?.filename || '-' }}</span>
         </el-form-item>
-        <el-form-item label="源链接">
+        <el-form-item :label="t('files.sourceLinkField')">
           <el-input
             v-model="sourceUrlForm.source_url"
-            placeholder="请输入 http/https 源链接"
+            :placeholder="t('files.sourceLinkPlaceholder')"
             clearable
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showSourceUrlDialog = false">取消</el-button>
+        <el-button @click="showSourceUrlDialog = false">{{ t('common.cancel') }}</el-button>
         <el-button
           v-if="sourceUrlTargetFile?.source_url"
           type="danger"
           plain
           @click="saveSourceUrl(null)"
         >
-          清空源链接
+          {{ t('files.clearSourceLink') }}
         </el-button>
         <el-button type="primary" @click="saveSourceUrl(sourceUrlForm.source_url)">
-          保存
+          {{ t('common.save') }}
         </el-button>
       </template>
     </el-dialog>
@@ -656,6 +656,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox, type UploadInstance, type TableInstance } from 'element-plus'
 import dayjs from 'dayjs'
 import type { FileItem } from '@/types'
+import { useI18n } from '@/i18n'
 import {
   Upload, Folder, Search, Refresh, Loading, Warning, Document,
   Picture, Tickets, UploadFilled, FolderOpened,
@@ -687,6 +688,7 @@ const fileStatusDetails = reactive<Record<number, { error_message?: string | nul
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.isAdmin)
+const { t } = useI18n()
 
 // 文件夹导航
 const currentFolder = ref<string>('/')
@@ -844,7 +846,7 @@ const loadFiles = async () => {
     selectedFiles.value = []
     await refreshVisibleStatusDetails()
   } catch {
-    ElMessage.error('加载文件列表失败')
+    ElMessage.error(t('files.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -883,9 +885,9 @@ const copySourceUrl = async (sourceUrl?: string | null) => {
       document.execCommand('copy')
       document.body.removeChild(input)
     }
-    ElMessage.success('源链接已复制')
+    ElMessage.success(t('files.sourceLinkCopied'))
   } catch {
-    ElMessage.error('复制源链接失败')
+    ElMessage.error(t('files.sourceLinkCopyFailed'))
   }
 }
 
@@ -899,7 +901,7 @@ const joinFolderPath = (...segments: Array<string | undefined>) => {
   return parts.length ? `/${parts.join('/')}` : '/'
 }
 
-const extractErrorMessage = (error: any, fallback = '上传失败，请稍后重试') =>
+const extractErrorMessage = (error: any, fallback = t('files.allUploadFailed')) =>
   error?.response?.data?.detail || error?.response?.data?.message || fallback
 
 const resetUploadDialogState = () => {
@@ -976,7 +978,7 @@ const refreshVisibleStatusDetails = async () => {
 // 上传文件（普通）
 const handleUpload = async () => {
   if (!uploadFileList.value.length) {
-    ElMessage.warning('请选择要上传的文件')
+    ElMessage.warning(t('files.selectFileWarning'))
     return
   }
   
@@ -1023,15 +1025,15 @@ const handleUpload = async () => {
     }
 
     if (successCount > 0 && duplicateCount > 0) {
-      ElMessage.warning(`新增 ${successCount} 个文件，${duplicateCount} 个重复文件已跳过`)
+      ElMessage.warning(t('files.uploadSuccessAndDuplicate', { success: successCount, duplicate: duplicateCount }))
     } else if (successCount > 0) {
-      ElMessage.success(`成功上传 ${successCount} 个文件`)
+      ElMessage.success(t('files.uploadSuccessCount', { count: successCount }))
     } else if (duplicateCount > 0) {
-      ElMessage.warning(`${duplicateCount} 个重复文件已跳过，未新增文件`)
+      ElMessage.warning(t('files.duplicateSkippedOnly', { count: duplicateCount }))
     }
 
     if (failCount > 0) {
-      ElMessage.warning(`${failCount} 个文件上传失败，可直接重传失败项`)
+      ElMessage.warning(t('files.uploadFailedRetry', { count: failCount }))
     }
   } finally {
     uploading.value = false
@@ -1107,7 +1109,7 @@ const handleFolderSelected = (event: Event) => {
   folderUploading.value = false
   
   if (validFiles.length === 0) {
-    ElMessage.warning('该文件夹中没有支持的文件类型')
+    ElMessage.warning(t('files.noSupportedFiles'))
     return
   }
   
@@ -1186,19 +1188,23 @@ const uploadFolderItems = async (items: any[], resetCounters = false) => {
   }
 
   if (successCount > 0 && duplicateCount > 0) {
-    ElMessage.warning(
-      `文件夹上传完成：新增 ${successCount} 个，${duplicateCount} 个重复文件已跳过${failCount > 0 ? `，${failCount} 个失败` : ''}`
-    )
+    ElMessage.warning(t('files.folderUploadSummaryMixed', {
+      success: successCount,
+      duplicate: duplicateCount,
+      failedPart: failCount > 0 ? t('files.failedCountInline', { count: failCount }) : '',
+    }))
   } else if (successCount > 0) {
-    ElMessage.success(
-      `文件夹上传完成：${successCount} 个成功${failCount > 0 ? `，${failCount} 个失败` : ''}`
-    )
+    ElMessage.success(t('files.folderUploadSummarySuccess', {
+      success: successCount,
+      failedPart: failCount > 0 ? t('files.failedCountInline', { count: failCount }) : '',
+    }))
   } else if (duplicateCount > 0) {
-    ElMessage.warning(
-      `文件夹上传完成：${duplicateCount} 个重复文件已跳过${failCount > 0 ? `，${failCount} 个失败` : ''}`
-    )
+    ElMessage.warning(t('files.folderUploadSummaryDuplicate', {
+      duplicate: duplicateCount,
+      failedPart: failCount > 0 ? t('files.failedCountInline', { count: failCount }) : '',
+    }))
   } else {
-    ElMessage.error('所有文件上传失败')
+    ElMessage.error(t('files.allUploadFailed'))
   }
 }
 
@@ -1220,23 +1226,23 @@ const handleMoveFile = async () => {
   
   try {
     await fileApi.moveFile(moveFile.value.id, moveTargetFolder.value)
-    ElMessage.success(`已移动到 ${moveTargetFolder.value}`)
+    ElMessage.success(t('files.moveSuccess', { path: moveTargetFolder.value }))
     showMove.value = false
     loadFiles()
     loadSubfolders()
   } catch {
-    ElMessage.error('移动失败')
+    ElMessage.error(t('files.moveFailed'))
   }
 }
 
 const handleCreateFolder = async () => {
   const trimmedName = newFolderName.value.trim().replace(/^\/+|\/+$/g, '')
   if (!trimmedName) {
-    ElMessage.warning('请输入文件夹名称')
+    ElMessage.warning(t('files.folderNamePlaceholder'))
     return
   }
   if (trimmedName.includes('/')) {
-    ElMessage.warning('文件夹名称不能包含 /')
+    ElMessage.warning(t('files.folderRenameFailed'))
     return
   }
 
@@ -1246,12 +1252,12 @@ const handleCreateFolder = async () => {
 
   try {
     await fileApi.createFolder(targetPath)
-    ElMessage.success(`已创建文件夹 ${targetPath}`)
+    ElMessage.success(t('files.createSuccess', { path: targetPath }))
     showCreateFolder.value = false
     loadSubfolders()
     loadAllFolders()
   } catch {
-    ElMessage.error('创建文件夹失败')
+    ElMessage.error(t('files.createFailed'))
   }
 }
 
@@ -1260,11 +1266,11 @@ const handleRenameFolder = async () => {
 
   const nextName = renameFolderForm.new_name.trim().replace(/^\/+|\/+$/g, '')
   if (!nextName) {
-    ElMessage.warning('请输入新的文件夹名称')
+    ElMessage.warning(t('files.folderRenamePlaceholder'))
     return
   }
   if (nextName.includes('/')) {
-    ElMessage.warning('文件夹名称不能包含 /')
+    ElMessage.warning(t('files.folderRenameFailed'))
     return
   }
 
@@ -1280,12 +1286,12 @@ const handleRenameFolder = async () => {
     showRenameFolderDialog.value = false
     renameFolderTarget.value = null
     renameFolderForm.new_name = ''
-    ElMessage.success('文件夹重命名成功')
+    ElMessage.success(t('files.folderRenameSuccess'))
     loadFiles()
     loadSubfolders()
     loadAllFolders()
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail || '文件夹重命名失败')
+    ElMessage.error(error?.response?.data?.detail || t('files.folderRenameFailed'))
   }
 }
 
@@ -1295,34 +1301,38 @@ const deleteFolder = async (folder: { path: string; name: string }) => {
     const summary = summaryRes.data || { file_count: 0, subfolder_count: 0 }
 
     await ElMessageBox.confirm(
-      `确定要删除文件夹 "${folder.name}" 吗？`,
-      '删除文件夹',
+      t('files.confirmDeleteFolder', { name: folder.name }),
+      t('files.confirmDeleteFolderTitle'),
       {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
+        confirmButtonText: t('common.ok'),
+        cancelButtonText: t('common.cancel'),
         type: 'warning',
       }
     )
 
     await ElMessageBox.confirm(
-      `此操作将删除 "${folder.name}" 及其内容，包含 ${summary.file_count} 个文件、${summary.subfolder_count} 个子文件夹，且无法恢复。是否继续？`,
-      '二次确认',
+      t('files.confirmDeleteFolderSecond', {
+        name: folder.name,
+        files: summary.file_count,
+        folders: summary.subfolder_count,
+      }),
+      t('files.secondConfirmTitle'),
       {
-        confirmButtonText: '确认删除',
-        cancelButtonText: '取消',
+        confirmButtonText: t('files.confirmDelete'),
+        cancelButtonText: t('common.cancel'),
         type: 'error',
       }
     )
 
     await fileApi.deleteFolder(folder.path)
-    ElMessage.success('文件夹删除成功')
+    ElMessage.success(t('files.folderDeleteSuccess'))
     loadSubfolders()
     loadAllFolders()
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') {
       return
     }
-    ElMessage.error('删除文件夹失败')
+    ElMessage.error(t('files.folderDeleteFailed'))
   }
 }
 
@@ -1331,11 +1341,11 @@ const handleRenameFile = async () => {
 
   const nextFilename = renameFileForm.filename.trim()
   if (!nextFilename) {
-    ElMessage.warning('请输入新的文件名')
+    ElMessage.warning(t('files.newFilenamePlaceholder'))
     return
   }
   if (nextFilename.includes('/')) {
-    ElMessage.warning('文件名不能包含 /')
+    ElMessage.warning(t('files.fileRenameFailed'))
     return
   }
 
@@ -1362,9 +1372,9 @@ const handleRenameFile = async () => {
     showRenameFileDialog.value = false
     renameFileTarget.value = null
     renameFileForm.filename = ''
-    ElMessage.success('文件重命名成功')
+    ElMessage.success(t('files.fileRenameSuccess'))
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail || '文件重命名失败')
+    ElMessage.error(error?.response?.data?.detail || t('files.fileRenameFailed'))
   }
 }
 
@@ -1394,9 +1404,9 @@ const saveSourceUrl = async (value: string | null) => {
     sourceUrlTargetFile.value = null
     sourceUrlForm.source_url = ''
     showSourceUrlDialog.value = false
-    ElMessage.success(nextSourceUrl ? '源链接已更新' : '源链接已清空')
+    ElMessage.success(nextSourceUrl ? t('files.sourceLinkUpdated') : t('files.sourceLinkCleared'))
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail || '源链接保存失败')
+    ElMessage.error(error?.response?.data?.detail || t('files.sourceLinkSaveFailed'))
   }
 }
 
@@ -1406,32 +1416,32 @@ const saveSourceUrl = async (value: string | null) => {
 const retryFile = async (file: FileItem) => {
   try {
     const res = await fileApi.retryFile(file.id)
-    ElMessage.success(res.message || `已重新提交 "${file.filename}"`)
+    ElMessage.success(res.message || t('files.retrySuccess', { name: file.filename }))
     refreshFilePageData()
   } catch {
-    ElMessage.error(file.index_status === 'failed' ? '重新上传失败' : '重新处理失败')
+    ElMessage.error(file.index_status === 'failed' ? t('files.retryUploadFailed') : t('files.retryProcessFailed'))
   }
 }
 
 // 重试所有失败文件
 const retryAllFailed = async () => {
   await ElMessageBox.confirm(
-    '确定要重试所有失败的文件吗？',
-    '批量重试',
+    t('files.confirmRetryAllFailed'),
+    t('files.retryAllTitle'),
     {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+      confirmButtonText: t('common.ok'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     }
   )
   
   try {
     const res = await fileApi.retryAllFailed()
-    ElMessage.success(res.message || '已重新提交')
+    ElMessage.success(res.message || t('files.retrySubmitted'))
     loadFiles()
     loadStats()
   } catch {
-    ElMessage.error('批量重试失败')
+    ElMessage.error(t('files.retryAllFailedRequest'))
   }
 }
 
@@ -1455,20 +1465,20 @@ const downloadFile = (file: FileItem) => {
 
 // 删除文件
 const deleteFile = async (file: FileItem) => {
-  await ElMessageBox.confirm(`确定要删除文件 "${file.filename}" 吗？`, '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
+  await ElMessageBox.confirm(t('files.confirmDeleteFile', { name: file.filename }), t('files.actions'), {
+    confirmButtonText: t('common.ok'),
+    cancelButtonText: t('common.cancel'),
     type: 'warning',
   })
   
   try {
     await fileApi.deleteFile(file.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('files.fileDeleteSuccess'))
     loadFiles()
     loadStats()
     loadSubfolders()
   } catch {
-    ElMessage.error('删除失败')
+    ElMessage.error(t('files.fileDeleteFailed'))
   }
 }
 
@@ -1483,16 +1493,16 @@ const clearSelection = () => {
 
 const batchDeleteSelectedFiles = async () => {
   if (selectedFiles.value.length === 0) {
-    ElMessage.warning('请先选择文件')
+    ElMessage.warning(t('files.batchSelected', { count: 0 }))
     return
   }
 
   await ElMessageBox.confirm(
-    `确定要删除选中的 ${selectedFiles.value.length} 个文件吗？`,
-    '批量删除',
+    t('files.confirmBatchDelete', { count: selectedFiles.value.length }),
+    t('files.batchDelete'),
     {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+      confirmButtonText: t('common.ok'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     }
   )
@@ -1503,15 +1513,15 @@ const batchDeleteSelectedFiles = async () => {
     const missingCount = res.data?.missing_ids?.length || 0
     ElMessage.success(
       missingCount > 0
-        ? `已删除 ${deletedCount} 个文件，${missingCount} 个文件不存在`
-        : `已删除 ${deletedCount} 个文件`
+        ? t('files.batchDeleteSummary', { deleted: deletedCount, missing: missingCount })
+        : t('files.batchDeleteSuccess', { deleted: deletedCount })
     )
     clearSelection()
     loadFiles()
     loadStats()
     loadSubfolders()
   } catch {
-    ElMessage.error('批量删除失败')
+    ElMessage.error(t('files.batchDeleteFailed'))
   }
 }
 
@@ -1530,13 +1540,13 @@ const getFileIcon = (type: string) => {
 
 const getFileTypeLabel = (type: string) => {
   const labels: Record<string, string> = {
-    image: '图片',
-    pdf: 'PDF 文档',
-    word: 'Word 文档',
-    excel: 'Excel 表格',
-    powerpoint: 'PPT 演示',
-    text: '文本文件',
-    archive: '压缩包',
+    image: t('files.typeLabel.image'),
+    pdf: t('files.typeLabel.pdf'),
+    word: t('files.typeLabel.word'),
+    excel: t('files.typeLabel.excel'),
+    powerpoint: t('files.typeLabel.powerpoint'),
+    text: t('files.typeLabel.text'),
+    archive: t('files.typeLabel.archive'),
   }
   return labels[type] || type
 }
@@ -1558,11 +1568,11 @@ const getStatusType = (status: string) => {
 
 const getStatusText = (status: string) => {
   const texts: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    completed: '已完成',
-    failed: '失败',
-    parsed: '已解析',
+    pending: t('files.status.pending'),
+    processing: t('files.status.processing'),
+    completed: t('files.status.completed'),
+    failed: t('files.status.failed'),
+    parsed: t('files.status.parsed'),
   }
   return texts[status] || status
 }
@@ -1574,18 +1584,18 @@ const getStatusDetail = (file: FileItem) => {
   const statusDetail = fileStatusDetails[file.id]
 
   if (file.index_status === 'failed') {
-    return statusDetail?.error_message || '处理失败，暂无详细错误信息'
+    return statusDetail?.error_message || t('files.failedHintFallback')
   }
 
   if (file.index_status === 'parsed') {
-    return '文档已解析完成，正在等待建立索引'
+    return t('files.parsedHint')
   }
 
   if (file.index_status === 'processing') {
-    return '文档正在解析或建立索引，请稍后刷新'
+    return t('files.processingHint')
   }
 
-  return '文件已进入处理队列，等待后台任务执行'
+  return t('files.pendingHint')
 }
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')

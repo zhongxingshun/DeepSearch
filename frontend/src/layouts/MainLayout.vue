@@ -16,17 +16,17 @@
       >
         <el-menu-item index="/search">
           <el-icon><Search /></el-icon>
-          <template #title>搜索</template>
+          <template #title>{{ t('route.search') }}</template>
         </el-menu-item>
         
         <el-menu-item index="/files">
           <el-icon><Folder /></el-icon>
-          <template #title>文件管理</template>
+          <template #title>{{ t('route.files') }}</template>
         </el-menu-item>
         
         <el-menu-item index="/history">
           <el-icon><Clock /></el-icon>
-          <template #title>搜索历史</template>
+          <template #title>{{ t('route.history') }}</template>
         </el-menu-item>
         
         <el-divider v-if="isAdmin" />
@@ -34,12 +34,12 @@
         <el-sub-menu v-if="isAdmin" index="/admin">
           <template #title>
             <el-icon><Setting /></el-icon>
-            <span>系统管理</span>
+            <span>{{ t('layout.systemManagement') }}</span>
           </template>
-          <el-menu-item index="/admin/users">用户管理</el-menu-item>
-          <el-menu-item index="/admin/stats">系统统计</el-menu-item>
-          <el-menu-item index="/admin/logs">审计日志</el-menu-item>
-          <el-menu-item index="/admin/settings">系统设置</el-menu-item>
+          <el-menu-item index="/admin/users">{{ t('layout.userManagement') }}</el-menu-item>
+          <el-menu-item index="/admin/stats">{{ t('layout.systemStats') }}</el-menu-item>
+          <el-menu-item index="/admin/logs">{{ t('layout.auditLogs') }}</el-menu-item>
+          <el-menu-item index="/admin/settings">{{ t('layout.systemSettings') }}</el-menu-item>
         </el-sub-menu>
       </el-menu>
       
@@ -57,14 +57,23 @@
       <el-header class="header">
         <div class="header-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="$route.meta.title">
-              {{ $route.meta.title }}
+            <el-breadcrumb-item :to="{ path: '/' }">{{ t('route.home') }}</el-breadcrumb-item>
+            <el-breadcrumb-item v-if="routeTitle">
+              {{ routeTitle }}
             </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
         
         <div class="header-right">
+          <el-select
+            v-model="locale"
+            class="language-switcher"
+            size="small"
+            @change="handleLocaleChange"
+          >
+            <el-option value="zh-CN" :label="t('common.chinese')" />
+            <el-option value="en-US" :label="t('common.english')" />
+          </el-select>
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-info">
               <el-avatar :size="32" :icon="UserFilled" />
@@ -75,15 +84,15 @@
               <el-dropdown-menu>
                 <el-dropdown-item command="profile">
                   <el-icon><User /></el-icon>
-                  个人中心
+                  {{ t('layout.profile') }}
                 </el-dropdown-item>
                 <el-dropdown-item command="password">
                   <el-icon><Key /></el-icon>
-                  修改密码
+                  {{ t('layout.changePassword') }}
                 </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon>
-                  退出登录
+                  {{ t('layout.logout') }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -104,10 +113,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
+import { useI18n } from '@/i18n'
 import {
   Search, Folder, Clock, Setting, UserFilled,
   ArrowDown, User, Key, SwitchButton, Expand, Fold,
@@ -116,11 +126,28 @@ import {
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { locale, setLocale, t } = useI18n()
 
 const isCollapsed = ref(false)
 const activeMenu = computed(() => route.path)
 const username = computed(() => authStore.username)
 const isAdmin = computed(() => authStore.isAdmin)
+const routeTitle = computed(() => {
+  const titleKey = route.meta.titleKey as string | undefined
+  return titleKey ? t(titleKey) : ''
+})
+
+watch(
+  () => [route.fullPath, locale.value],
+  () => {
+    document.title = routeTitle.value ? `${routeTitle.value} - DeepSearch` : 'DeepSearch'
+  },
+  { immediate: true }
+)
+
+const handleLocaleChange = (value: 'zh-CN' | 'en-US') => {
+  setLocale(value)
+}
 
 const handleCommand = async (command: string) => {
   switch (command) {
@@ -131,9 +158,9 @@ const handleCommand = async (command: string) => {
       router.push('/profile?tab=password')
       break
     case 'logout':
-      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
+      await ElMessageBox.confirm(t('layout.confirmLogout'), t('layout.confirmTitle'), {
+        confirmButtonText: t('common.ok'),
+        cancelButtonText: t('common.cancel'),
         type: 'warning',
       })
       await authStore.logout()
@@ -242,6 +269,16 @@ const handleCommand = async (command: string) => {
   justify-content: space-between;
   padding: 0 24px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.language-switcher {
+  width: 120px;
 }
 
 .user-info {

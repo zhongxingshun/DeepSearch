@@ -5,6 +5,7 @@
 
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
 
 // 路由配置
 const routes: RouteRecordRaw[] = [
@@ -22,25 +23,25 @@ const routes: RouteRecordRaw[] = [
                 path: 'search',
                 name: 'search',
                 component: () => import('@/views/SearchPage.vue'),
-                meta: { title: '搜索' },
+                meta: { titleKey: 'route.search' },
             },
             {
                 path: 'files',
                 name: 'files',
                 component: () => import('@/views/FilesPage.vue'),
-                meta: { title: '文件管理' },
+                meta: { titleKey: 'route.files' },
             },
             {
                 path: 'history',
                 name: 'history',
                 component: () => import('@/views/HistoryPage.vue'),
-                meta: { title: '搜索历史' },
+                meta: { titleKey: 'route.history' },
             },
             {
                 path: 'admin',
                 name: 'admin',
                 component: () => import('@/views/AdminPage.vue'),
-                meta: { title: '系统管理', requiresAdmin: true },
+                meta: { titleKey: 'route.admin', requiresAdmin: true },
                 children: [
                     {
                         path: '',
@@ -50,25 +51,25 @@ const routes: RouteRecordRaw[] = [
                         path: 'users',
                         name: 'admin-users',
                         component: () => import('@/views/admin/UsersPage.vue'),
-                        meta: { title: '用户管理' },
+                        meta: { titleKey: 'route.adminUsers' },
                     },
                     {
                         path: 'stats',
                         name: 'admin-stats',
                         component: () => import('@/views/admin/StatsPage.vue'),
-                        meta: { title: '系统统计' },
+                        meta: { titleKey: 'route.adminStats' },
                     },
                     {
                         path: 'logs',
                         name: 'admin-logs',
                         component: () => import('@/views/admin/LogsPage.vue'),
-                        meta: { title: '审计日志' },
+                        meta: { titleKey: 'route.adminLogs' },
                     },
                     {
                         path: 'settings',
                         name: 'admin-settings',
                         component: () => import('@/views/admin/SettingsPage.vue'),
-                        meta: { title: '系统设置' },
+                        meta: { titleKey: 'route.adminSettings' },
                     },
                 ],
             },
@@ -76,7 +77,7 @@ const routes: RouteRecordRaw[] = [
                 path: 'profile',
                 name: 'profile',
                 component: () => import('@/views/ProfilePage.vue'),
-                meta: { title: '个人中心' },
+                meta: { titleKey: 'route.profile' },
             },
         ],
     },
@@ -84,13 +85,13 @@ const routes: RouteRecordRaw[] = [
         path: '/login',
         name: 'login',
         component: () => import('@/views/LoginPage.vue'),
-        meta: { title: '登录' },
+        meta: { titleKey: 'route.login' },
     },
     {
         path: '/:pathMatch(.*)*',
         name: 'not-found',
         component: () => import('@/views/NotFoundPage.vue'),
-        meta: { title: '页面未找到' },
+        meta: { titleKey: 'route.notFound' },
     },
 ]
 
@@ -103,7 +104,8 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach(async (to, from, next) => {
     // 设置页面标题
-    const title = to.meta.title as string
+    const titleKey = to.meta.titleKey as string | undefined
+    const title = titleKey ? t(titleKey) : ''
     document.title = title ? `${title} - DeepSearch` : 'DeepSearch'
 
     const authStore = useAuthStore()
