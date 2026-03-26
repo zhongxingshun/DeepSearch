@@ -39,7 +39,7 @@ export interface FileItem {
     uploaded_by: number | null
     file_size: number
     file_size_human: string
-    file_type: string
+    file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
     md5_hash: string | null
     index_status: 'pending' | 'processing' | 'completed' | 'failed'
     created_at: string
@@ -79,7 +79,7 @@ export interface SearchResult {
     id: string
     file_id: number
     filename: string
-    file_type: string
+    file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
     file_size: number
     file_path: string
     content_snippet: string

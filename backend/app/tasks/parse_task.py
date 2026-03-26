@@ -50,6 +50,21 @@ def parse_document(
         
         if not full_path.exists():
             raise FileNotFoundError(f"文件不存在: {full_path}")
+
+        if file_type == "archive":
+            logger.info(f"压缩包文件跳过解析，仅建立文件名索引: file_id={file_id}")
+            update_file_status(file_id, "parsed")
+            from app.tasks.index_task import index_document
+            index_document.delay(
+                file_id=file_id,
+                content="",
+            )
+            return {
+                "success": True,
+                "file_id": file_id,
+                "content_length": 0,
+                "message": "压缩包跳过解析，已触发索引任务",
+            }
         
         # 提取文本
         content = extract_text(full_path, file_type)

@@ -119,7 +119,8 @@ class Settings(BaseSettings):
         default=[
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
             "txt", "md", "csv", "rtf",
-            "jpg", "jpeg", "png", "gif", "bmp", "tiff"
+            "jpg", "jpeg", "png", "gif", "bmp", "tiff",
+            "zip", "rar"
         ],
         description="允许的文件扩展名"
     )

@@ -271,5 +271,6 @@ def get_file_type(extension: str) -> str:
         "txt": "text", "md": "markdown", "csv": "csv",
         "jpg": "image", "jpeg": "image", "png": "image",
         "gif": "image", "bmp": "image", "tiff": "image",
+        "zip": "archive", "rar": "archive",
     }
     return type_mapping.get(extension.lower(), "other")

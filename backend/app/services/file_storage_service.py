@@ -288,6 +288,8 @@ class FileStorageService:
             "bmp": "image",
             "tiff": "image",
             "tif": "image",
+            "zip": "archive",
+            "rar": "archive",
         }
         return type_mapping.get(ext, "other")
 

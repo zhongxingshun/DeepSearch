@@ -252,6 +252,8 @@ class SearchService:
                 query=query,
                 snippet_len=300,
             )
+            if not content_snippet and hit.get("file_type") == "archive":
+                content_snippet = "文件名匹配"
             
             processed.append({
                 "id": hit.get("id"),

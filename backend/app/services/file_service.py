@@ -124,7 +124,37 @@ class FileService:
         )
         self.db.add(db_file)
         await self.db.flush()
-        
+
+        task: Optional[Task] = None
+
+        if file_type == "archive":
+            db_file.index_status = "processing"
+            task = Task(
+                file_id=db_file.id,
+                task_type="index",
+                priority="low",
+                status="pending",
+            )
+            self.db.add(task)
+            await self.db.commit()
+            await self.db.refresh(db_file)
+
+            try:
+                from app.tasks.index_task import index_document
+
+                celery_result = index_document.delay(
+                    file_id=db_file.id,
+                    content="",
+                )
+                task.celery_task_id = celery_result.id
+                await self.db.commit()
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"压缩包索引任务发送失败: {e}")
+
+            return db_file, is_duplicate, task.celery_task_id
+
         # 创建解析任务
         task = Task(
             file_id=db_file.id,
@@ -135,7 +165,7 @@ class FileService:
         self.db.add(task)
         await self.db.commit()
         await self.db.refresh(db_file)
-        
+
         # 发送 Celery 异步任务
         try:
             from app.tasks.parse_task import parse_document
@@ -150,7 +180,7 @@ class FileService:
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Celery 任务发送失败: {e}")
-        
+
         return db_file, is_duplicate, task.celery_task_id
 
     async def upload_files(

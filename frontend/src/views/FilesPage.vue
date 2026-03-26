@@ -132,6 +132,7 @@
         <el-option label="PowerPoint" value="powerpoint" />
         <el-option label="图片" value="image" />
         <el-option label="文本" value="text" />
+        <el-option label="压缩包" value="archive" />
       </el-select>
       <el-select v-model="filters.status" placeholder="索引状态" clearable @change="loadFiles">
         <el-option label="待处理" value="pending" />
@@ -224,7 +225,7 @@
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" link type="primary" @click="openPreview(row)">
+          <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
             预览
           </el-button>
           <el-button size="small" link type="primary" @click="downloadFile(row)">
@@ -600,12 +601,13 @@ const filters = reactive({
   status: '',
 })
 
-const acceptTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.jpg,.jpeg,.png,.gif,.bmp'
+const acceptTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.jpg,.jpeg,.png,.gif,.bmp,.zip,.rar'
 
 // 支持的文件扩展名
 const allowedExtensions = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
   'txt', 'md', 'csv', 'log',
+  'zip', 'rar',
   'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
 ])
 
@@ -1225,6 +1227,7 @@ const getFileIcon = (type: string) => {
     excel: Tickets,
     powerpoint: Document,
     text: Document,
+    archive: Folder,
   }
   return icons[type] || Document
 }
@@ -1237,9 +1240,12 @@ const getFileTypeLabel = (type: string) => {
     excel: 'Excel 表格',
     powerpoint: 'PPT 演示',
     text: '文本文件',
+    archive: '压缩包',
   }
   return labels[type] || type
 }
+
+const supportsPreview = (type: string) => ['image', 'pdf'].includes(type)
 
 const getFileTypeClass = (type: string) => `file-type-${type}`
 
@@ -1557,6 +1563,11 @@ onBeforeUnmount(() => {
   &.file-type-text {
     background: #f3f4f6;
     color: #6b7280;
+  }
+
+  &.file-type-archive {
+    background: #fff7ed;
+    color: #c2410c;
   }
 }
 

@@ -46,6 +46,7 @@
           <el-option label="PowerPoint" value="powerpoint" />
           <el-option label="图片" value="image" />
           <el-option label="文本" value="text" />
+          <el-option label="压缩包" value="archive" />
         </el-select>
         
         <el-select v-model="filters.sort_by" placeholder="排序方式" clearable size="small">
@@ -77,7 +78,7 @@
             class="result-item card"
           >
             <div class="result-header">
-              <div class="file-info" @click="openPreview(result)">
+              <div class="file-info" :class="{ clickable: supportsPreview(result.file_type) }" @click="openPreview(result)">
                 <div :class="['file-type-icon-sm', `ft-${result.file_type}`]">
                   <el-icon :size="22">
                     <component :is="getFileIcon(result.file_type)" />
@@ -93,7 +94,7 @@
                 </div>
               </div>
               <div class="result-actions">
-                <el-button size="small" type="primary" link @click="openPreview(result)">
+                <el-button v-if="supportsPreview(result.file_type)" size="small" type="primary" link @click="openPreview(result)">
                   <el-icon><View /></el-icon>
                   预览
                 </el-button>
@@ -236,7 +237,7 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import type { SearchResult } from '@/types'
 import {
-  Search, Clock, Download, Document, Picture, Tickets, View,
+  Search, Clock, Download, Document, Picture, Tickets, View, Folder,
 } from '@element-plus/icons-vue'
 
 const keyword = ref('')
@@ -326,6 +327,7 @@ const handlePageChange = () => {
 
 // 打开预览
 const openPreview = (result: SearchResult) => {
+  if (!supportsPreview(result.file_type)) return
   previewFile.value = result
   previewError.value = false
   showPreview.value = true
@@ -366,6 +368,7 @@ const getFileIcon = (type: string) => {
     excel: Tickets,
     powerpoint: Document,
     image: Picture,
+    archive: Folder,
   }
   return icons[type] || Document
 }
@@ -378,9 +381,12 @@ const getFileTypeLabel = (type: string): string => {
     excel: 'Excel',
     powerpoint: 'PPT',
     text: '文本',
+    archive: '压缩包',
   }
   return labels[type] || type
 }
+
+const supportsPreview = (type: string) => ['image', 'pdf'].includes(type)
 
 // 格式化大小
 const formatSize = (bytes: number): string => {
@@ -537,6 +543,7 @@ onMounted(async () => {
   &.ft-excel { background: #dcfce7; color: #16a34a; }
   &.ft-powerpoint { background: #ffedd5; color: #ea580c; }
   &.ft-text { background: #f3f4f6; color: #6b7280; }
+  &.ft-archive { background: #fff7ed; color: #c2410c; }
 }
 
 /* 预览面板中的大图标 */
@@ -555,6 +562,7 @@ onMounted(async () => {
   &.ft-excel { background: #dcfce7; color: #16a34a; }
   &.ft-powerpoint { background: #ffedd5; color: #ea580c; }
   &.ft-text { background: #f3f4f6; color: #6b7280; }
+  &.ft-archive { background: #fff7ed; color: #c2410c; }
 }
 
 .file-meta {
@@ -591,6 +599,10 @@ onMounted(async () => {
     font-size: 12px;
     color: #909399;
   }
+}
+
+.file-info.clickable {
+  cursor: pointer;
 }
 
 .result-actions {
