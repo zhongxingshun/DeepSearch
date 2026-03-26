@@ -85,6 +85,7 @@ export interface SearchResult {
     file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
     file_size: number
     file_path: string
+    source_url?: string | null
     content_snippet: string
     score: number
     highlights: SearchHighlight[]

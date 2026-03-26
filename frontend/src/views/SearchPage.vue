@@ -179,10 +179,19 @@
               <span>{{ formatDate(previewFile.created_at) }}</span>
             </div>
           </div>
-          <el-button type="primary" @click="downloadFile(previewFile)">
-            <el-icon><Download /></el-icon>
-            {{ t('searchPage.downloadFile') }}
-          </el-button>
+          <div class="preview-actions">
+            <el-button
+              v-if="isAdmin || previewFile.source_url"
+              @click="handleSourceLinkClick(previewFile)"
+              @dblclick.stop="handleSourceLinkDoubleClick(previewFile)"
+            >
+              {{ t('files.sourceLink') }}
+            </el-button>
+            <el-button type="primary" @click="downloadFile(previewFile)">
+              <el-icon><Download /></el-icon>
+              {{ t('searchPage.downloadFile') }}
+            </el-button>
+          </div>
         </div>
 
         <!-- 预览内容区域 -->
@@ -226,13 +235,30 @@
         </div>
       </div>
     </el-drawer>
+
+    <el-dialog v-model="showSourceUrlDialog" :title="t('files.sourceLinkTitle')" width="520px">
+      <el-form label-position="top">
+        <el-form-item :label="t('files.sourceLinkField')">
+          <el-input
+            v-model="sourceUrlForm.source_url"
+            :placeholder="t('files.sourceLinkPlaceholder')"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSourceUrlDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveSourceUrl">{{ t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, onBeforeUnmount } from 'vue'
 import { searchApi } from '@/api/search'
 import { fileApi } from '@/api/files'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import type { SearchResult } from '@/types'
@@ -253,11 +279,19 @@ const suggestions = ref<any[]>([])
 const showSuggestions = ref(false)
 const hotKeywords = ref<any[]>([])
 const { t } = useI18n()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
 
 // 预览状态
 const showPreview = ref(false)
 const previewFile = ref<SearchResult | null>(null)
 const previewError = ref(false)
+const showSourceUrlDialog = ref(false)
+const sourceUrlTargetFileId = ref<number | null>(null)
+const sourceUrlForm = reactive({
+  source_url: '',
+})
+let sourceLinkClickTimer: number | null = null
 
 const filters = reactive({
   file_type: '',
@@ -333,6 +367,21 @@ const openPreview = (result: SearchResult) => {
   previewFile.value = result
   previewError.value = false
   showPreview.value = true
+  void hydratePreviewFile(result.file_id)
+}
+
+const hydratePreviewFile = async (fileId: number) => {
+  try {
+    const file = await fileApi.getFile(fileId)
+    if (previewFile.value?.file_id === fileId) {
+      previewFile.value = {
+        ...previewFile.value,
+        source_url: file.source_url || null,
+      }
+    }
+  } catch {
+    // 忽略详情拉取失败，保留现有预览
+  }
 }
 
 // 获取预览 URL
@@ -344,6 +393,91 @@ const getPreviewUrl = (fileId: number): string => {
 const downloadFile = (result: SearchResult) => {
   const url = fileApi.getDownloadUrl(result.file_id)
   window.open(url, '_blank')
+}
+
+const openSourceUrlDialog = (result: SearchResult) => {
+  sourceUrlTargetFileId.value = result.file_id
+  sourceUrlForm.source_url = result.source_url || ''
+  showSourceUrlDialog.value = true
+}
+
+const copySourceUrl = async (sourceUrl?: string | null) => {
+  if (!sourceUrl) return
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(sourceUrl)
+    } else {
+      const input = document.createElement('textarea')
+      input.value = sourceUrl
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.appendChild(input)
+      input.focus()
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+    }
+    ElMessage.success(t('files.sourceLinkCopied'))
+  } catch {
+    ElMessage.error(t('files.sourceLinkCopyFailed'))
+  }
+}
+
+const clearSourceLinkClickTimer = () => {
+  if (sourceLinkClickTimer) {
+    window.clearTimeout(sourceLinkClickTimer)
+    sourceLinkClickTimer = null
+  }
+}
+
+const handleSourceLinkClick = (result: SearchResult) => {
+  clearSourceLinkClickTimer()
+  sourceLinkClickTimer = window.setTimeout(async () => {
+    sourceLinkClickTimer = null
+    if (result.source_url) {
+      await copySourceUrl(result.source_url)
+      return
+    }
+    if (isAdmin.value) {
+      ElMessage.warning(t('files.sourceLinkEmptyHint'))
+    }
+  }, 220)
+}
+
+const handleSourceLinkDoubleClick = (result: SearchResult) => {
+  clearSourceLinkClickTimer()
+  if (isAdmin.value) {
+    openSourceUrlDialog(result)
+  }
+}
+
+const saveSourceUrl = async () => {
+  if (!sourceUrlTargetFileId.value) return
+
+  const nextSourceUrl = sourceUrlForm.source_url.trim() || null
+
+  try {
+    const res = await fileApi.updateSourceUrl(sourceUrlTargetFileId.value, nextSourceUrl)
+    const resolvedSourceUrl = res.data?.source_url || null
+    results.value = results.value.map((item) =>
+      item.file_id === sourceUrlTargetFileId.value
+        ? { ...item, source_url: resolvedSourceUrl }
+        : item
+    )
+    if (previewFile.value?.file_id === sourceUrlTargetFileId.value) {
+      previewFile.value = {
+        ...previewFile.value,
+        source_url: resolvedSourceUrl,
+      }
+    }
+    sourceUrlTargetFileId.value = null
+    sourceUrlForm.source_url = ''
+    showSourceUrlDialog.value = false
+    ElMessage.success(nextSourceUrl ? t('files.sourceLinkUpdated') : t('files.sourceLinkCleared'))
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || t('files.sourceLinkSaveFailed'))
+  }
 }
 
 // 获取纯文件名
@@ -411,6 +545,10 @@ onMounted(async () => {
   } catch {
     // 忽略错误
   }
+})
+
+onBeforeUnmount(() => {
+  clearSourceLinkClickTimer()
 })
 </script>
 
@@ -731,6 +869,13 @@ onMounted(async () => {
       color: #909399;
     }
   }
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .preview-content {

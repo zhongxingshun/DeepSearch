@@ -333,14 +333,12 @@
             >
               {{ t('files.fileRenameTitle') }}
             </el-button>
-            <el-button v-if="previewFile.source_url" @click="copySourceUrl(previewFile.source_url)">
-              {{ t('files.sourceLink') }}
-            </el-button>
             <el-button
-              v-if="isAdmin"
-              @click="openSourceUrlDialog(previewFile)"
+              v-if="isAdmin || previewFile.source_url"
+              @click="handleSourceLinkClick(previewFile)"
+              @dblclick.stop="handleSourceLinkDoubleClick(previewFile)"
             >
-              {{ previewFile.source_url ? t('files.editSourceLink') : t('files.setSourceLink') }}
+              {{ t('files.sourceLink') }}
             </el-button>
             <el-button type="primary" @click="downloadFile(previewFile)">
               {{ t('files.downloadFile') }}
