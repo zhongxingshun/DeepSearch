@@ -101,6 +101,10 @@ bash scripts/remote-deploy.sh
 
 这会自动完成：**同步代码 → 重建镜像 → 重启服务**。
 
+说明：
+- 当前服务器使用 `akuvox` 账号直接执行 `docker compose`，日常更新脚本不依赖 `sudo`
+- 脚本已关闭 `rsync` 的目录时间戳/属主同步，避免远端目录权限导致返回 `23`
+
 ### 其他部署命令
 
 ```bash
@@ -154,22 +158,22 @@ bash scripts/deploy.sh update     # git pull + 重建 + 重启
 ```bash
 ssh akuvox@192.168.10.65
 cd ~/DeepSearch
-sudo docker compose ps
+docker compose ps
 ```
 
 ### 重启单个服务
 
 ```bash
-sudo docker compose restart backend
-sudo docker compose restart celery-worker
+docker compose restart backend
+docker compose restart celery-worker
 ```
 
 ### 查看实时日志
 
 ```bash
-sudo docker compose logs -f backend          # 后端
-sudo docker compose logs -f celery-worker    # Celery
-sudo docker compose logs -f --tail 100       # 全部（最近100行）
+docker compose logs -f backend          # 后端
+docker compose logs -f celery-worker    # Celery
+docker compose logs -f --tail 100       # 全部（最近100行）
 ```
 
 ### 数据备份

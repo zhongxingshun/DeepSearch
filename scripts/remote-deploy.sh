@@ -32,7 +32,6 @@ error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SSH_CMD="sshpass -p '${REMOTE_PASS}' ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST}"
 RSYNC_SSH="sshpass -p '${REMOTE_PASS}' ssh -o StrictHostKeyChecking=no"
 
 # ========== 检查 sshpass ==========
@@ -46,7 +45,13 @@ check_deps() {
 # ========== 同步代码 ==========
 sync_code() {
     info "同步代码到 ${REMOTE_HOST}:${REMOTE_DIR} ..."
+    sshpass -p "${REMOTE_PASS}" ssh -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" \
+        "mkdir -p '${REMOTE_DIR}'"
     rsync -avz --delete \
+        --omit-dir-times \
+        --no-perms \
+        --no-owner \
+        --no-group \
         --exclude '.git' \
         --exclude 'node_modules' \
         --exclude '.venv' \
@@ -64,7 +69,7 @@ sync_code() {
 
 # ========== 远程执行 ==========
 remote_exec() {
-    eval "${SSH_CMD}" "echo '${REMOTE_PASS}' | sudo -S bash -c '$1'" 2>&1 | grep -v '^\[sudo\]'
+    sshpass -p "${REMOTE_PASS}" ssh -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "$1"
 }
 
 # ========== 重建并重启 ==========
@@ -109,9 +114,9 @@ show_status() {
 show_logs() {
     local service="${1:-}"
     if [ -n "$service" ]; then
-        eval "${SSH_CMD}" "echo '${REMOTE_PASS}' | sudo -S docker logs --tail 50 deepsearch-${service}" 2>&1 | grep -v '^\[sudo\]'
+        remote_exec "docker logs --tail 50 deepsearch-${service}"
     else
-        eval "${SSH_CMD}" "echo '${REMOTE_PASS}' | sudo -S bash -c 'cd ${REMOTE_DIR} && docker compose logs --tail 50'" 2>&1 | grep -v '^\[sudo\]'
+        remote_exec "cd ${REMOTE_DIR} && docker compose logs --tail 50"
     fi
 }
 
