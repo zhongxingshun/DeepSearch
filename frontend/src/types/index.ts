@@ -36,10 +36,13 @@ export interface FileItem {
     id: number
     filename: string
     file_path: string
+    folder_path?: string
+    display_name?: string
     uploaded_by: number | null
     file_size: number
     file_size_human: string
     file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
+    source_url?: string | null
     md5_hash: string | null
     index_status: 'pending' | 'processing' | 'completed' | 'failed'
     created_at: string

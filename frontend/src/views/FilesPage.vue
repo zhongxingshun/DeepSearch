@@ -223,10 +223,28 @@
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="300" fixed="right">
         <template #default="{ row }">
           <el-button v-if="supportsPreview(row.file_type)" size="small" link type="primary" @click="openPreview(row)">
             预览
+          </el-button>
+          <el-button
+            v-if="row.source_url"
+            size="small"
+            link
+            type="primary"
+            @click="copySourceUrl(row.source_url)"
+          >
+            源链接
+          </el-button>
+          <el-button
+            v-if="isAdmin"
+            size="small"
+            link
+            type="primary"
+            @click="openSourceUrlDialog(row)"
+          >
+            {{ row.source_url ? '编辑源链接' : '设置源链接' }}
           </el-button>
           <el-button size="small" link type="primary" @click="downloadFile(row)">
             下载
@@ -285,9 +303,20 @@
               <span>{{ formatDate(previewFile.created_at) }}</span>
             </div>
           </div>
-          <el-button type="primary" @click="downloadFile(previewFile)">
-            下载文件
-          </el-button>
+          <div class="preview-actions">
+            <el-button v-if="previewFile.source_url" @click="copySourceUrl(previewFile.source_url)">
+              源链接
+            </el-button>
+            <el-button
+              v-if="isAdmin"
+              @click="openSourceUrlDialog(previewFile)"
+            >
+              {{ previewFile.source_url ? '编辑源链接' : '设置源链接' }}
+            </el-button>
+            <el-button type="primary" @click="downloadFile(previewFile)">
+              下载文件
+            </el-button>
+          </div>
         </div>
 
         <div class="preview-content">
@@ -514,6 +543,35 @@
         <el-button type="primary" @click="handleCreateFolder">创建</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showSourceUrlDialog" title="设置源链接" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="文件">
+          <span>{{ sourceUrlTargetFile?.display_name || sourceUrlTargetFile?.filename || '-' }}</span>
+        </el-form-item>
+        <el-form-item label="源链接">
+          <el-input
+            v-model="sourceUrlForm.source_url"
+            placeholder="请输入 http/https 源链接"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSourceUrlDialog = false">取消</el-button>
+        <el-button
+          v-if="sourceUrlTargetFile?.source_url"
+          type="danger"
+          plain
+          @click="saveSourceUrl(null)"
+        >
+          清空源链接
+        </el-button>
+        <el-button type="primary" @click="saveSourceUrl(sourceUrlForm.source_url)">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -546,6 +604,11 @@ const uploadFileList = ref<any[]>([])
 const showPreview = ref(false)
 const previewFile = ref<FileItem | null>(null)
 const previewError = ref(false)
+const showSourceUrlDialog = ref(false)
+const sourceUrlTargetFile = ref<FileItem | null>(null)
+const sourceUrlForm = reactive({
+  source_url: '',
+})
 const fileStatusDetails = reactive<Record<number, { error_message?: string | null; task_status?: string | null; updated_at?: string }>>({})
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
 const authStore = useAuthStore()
@@ -660,6 +723,12 @@ const openCreateFolderDialog = () => {
   showCreateFolder.value = true
 }
 
+const openSourceUrlDialog = (file: FileItem) => {
+  sourceUrlTargetFile.value = file
+  sourceUrlForm.source_url = file.source_url || ''
+  showSourceUrlDialog.value = true
+}
+
 // 加载文件列表
 const loadFiles = async () => {
   loading.value = true
@@ -699,6 +768,29 @@ const refreshFilePageData = () => {
   loadFiles()
   loadStats()
   loadSubfolders()
+}
+
+const copySourceUrl = async (sourceUrl?: string | null) => {
+  if (!sourceUrl) return
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(sourceUrl)
+    } else {
+      const input = document.createElement('textarea')
+      input.value = sourceUrl
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.appendChild(input)
+      input.focus()
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+    }
+    ElMessage.success('源链接已复制')
+  } catch {
+    ElMessage.error('复制源链接失败')
+  }
 }
 
 const joinFolderPath = (...segments: Array<string | undefined>) => {
@@ -1101,6 +1193,38 @@ const deleteFolder = async (folder: { path: string; name: string }) => {
       return
     }
     ElMessage.error('删除文件夹失败')
+  }
+}
+
+const saveSourceUrl = async (value: string | null) => {
+  if (!sourceUrlTargetFile.value) return
+
+  try {
+    const normalizedValue = typeof value === 'string' ? value.trim() : null
+    const res = await fileApi.updateSourceUrl(
+      sourceUrlTargetFile.value.id,
+      normalizedValue || null
+    )
+    const nextSourceUrl = res.data?.source_url || null
+
+    const targetId = sourceUrlTargetFile.value.id
+    files.value = files.value.map((file) =>
+      file.id === targetId ? { ...file, source_url: nextSourceUrl } : file
+    )
+
+    if (previewFile.value?.id === targetId) {
+      previewFile.value = {
+        ...previewFile.value,
+        source_url: nextSourceUrl,
+      }
+    }
+
+    sourceUrlTargetFile.value = null
+    sourceUrlForm.source_url = ''
+    showSourceUrlDialog.value = false
+    ElMessage.success(nextSourceUrl ? '源链接已更新' : '源链接已清空')
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '源链接保存失败')
   }
 }
 
@@ -1612,6 +1736,13 @@ onBeforeUnmount(() => {
   gap: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid #ebeef5;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .file-type-icon-lg {

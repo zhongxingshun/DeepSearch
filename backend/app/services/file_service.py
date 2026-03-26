@@ -6,6 +6,7 @@
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 
 from fastapi import UploadFile
 from sqlalchemy import delete, select, func, desc
@@ -34,6 +35,22 @@ class FileService:
         if path == "/":
             return "根目录"
         return PurePosixPath(path).name or path
+
+    @staticmethod
+    def normalize_source_url(source_url: Optional[str]) -> Optional[str]:
+        """规范化源链接"""
+        if source_url is None:
+            return None
+
+        normalized = source_url.strip()
+        if not normalized:
+            return None
+
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("源链接必须是合法的 http/https 地址")
+
+        return normalized
 
     @staticmethod
     def _collect_ancestor_paths(path: str) -> list[str]:
@@ -486,6 +503,17 @@ class FileService:
         self.storage.create_virtual_folder(target_folder)
         
         file.folder_path = target_folder
+        await self.db.commit()
+        await self.db.refresh(file)
+        return file
+
+    async def update_source_url(self, file_id: int, source_url: Optional[str]) -> File:
+        """更新文件源链接"""
+        file = await self.get_file_by_id(file_id)
+        if not file:
+            raise ValueError("文件不存在")
+
+        file.source_url = self.normalize_source_url(source_url)
         await self.db.commit()
         await self.db.refresh(file)
         return file

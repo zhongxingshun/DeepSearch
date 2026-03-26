@@ -92,6 +92,14 @@ async def ensure_schema_compatibility() -> None:
                 """
             )
         )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE files
+                ADD COLUMN IF NOT EXISTS source_url VARCHAR(2000)
+                """
+            )
+        )
 
 
 async def close_db() -> None:

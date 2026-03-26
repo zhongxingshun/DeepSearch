@@ -28,6 +28,7 @@ class File(Base):
     )
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     md5_hash: Mapped[Optional[str]] = mapped_column(
         String(32), unique=True, index=True
     )
@@ -91,6 +92,7 @@ class File(Base):
             "file_size": self.file_size,
             "file_size_human": self.file_size_human,
             "file_type": self.file_type,
+            "source_url": self.source_url,
             "md5_hash": self.md5_hash,
             "index_status": self.index_status,
             "created_at": self.created_at.isoformat() if self.created_at else None,

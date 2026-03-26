@@ -29,6 +29,13 @@ export const fileApi = {
     },
 
     /**
+     * 更新文件源链接
+     */
+    async updateSourceUrl(id: number, sourceUrl: string | null): Promise<any> {
+        return http.put(`/files/${id}/source-url`, { source_url: sourceUrl })
+    },
+
+    /**
      * 上传单个文件
      */
     async uploadFile(file: File, onProgress?: (percent: number) => void, folderPath?: string): Promise<any> {

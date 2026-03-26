@@ -35,6 +35,7 @@ class FileResponse(FileBase):
     file_size: int
     file_size_human: str
     file_type: str
+    source_url: Optional[str] = None
     md5_hash: Optional[str]
     index_status: str
     created_at: datetime
@@ -79,6 +80,11 @@ class FileUploadResponse(BaseModel):
 class FileMoveRequest(BaseModel):
     """文件移动请求"""
     target_folder: str = Field(..., description="目标文件夹路径")
+
+
+class FileSourceUrlUpdateRequest(BaseModel):
+    """文件源链接更新请求"""
+    source_url: Optional[str] = Field(None, description="源链接，可为空")
 
 
 class FolderInfo(BaseModel):

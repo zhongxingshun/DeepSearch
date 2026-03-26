@@ -20,6 +20,7 @@ from app.schemas.file import (
     FileUploadResponse,
     FileBatchDeleteRequest,
     FileMoveRequest,
+    FileSourceUrlUpdateRequest,
     FolderCreateRequest,
     FolderInfo,
     FolderListResponse,
@@ -223,6 +224,7 @@ async def list_files(
                 file_size=f.file_size,
                 file_size_human=f.file_size_human,
                 file_type=f.file_type,
+                source_url=f.source_url,
                 md5_hash=f.md5_hash,
                 index_status=f.index_status,
                 created_at=f.created_at,
@@ -351,10 +353,13 @@ async def get_file(
         id=file.id,
         filename=file.filename,
         file_path=file.file_path,
+        folder_path=file.folder_path,
+        display_name=file.display_name,
         uploaded_by=file.uploaded_by,
         file_size=file.file_size,
         file_size_human=file.file_size_human,
         file_type=file.file_type,
+        source_url=file.source_url,
         md5_hash=file.md5_hash,
         index_status=file.index_status,
         created_at=file.created_at,
@@ -649,3 +654,33 @@ async def move_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
+
+
+@router.put("/{file_id}/source-url", response_model=ResponseBase)
+async def update_file_source_url(
+    file_id: int,
+    body: FileSourceUrlUpdateRequest,
+    current_user: User = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新文件源链接（仅管理员）"""
+    file_service = FileService(db)
+
+    try:
+        updated = await file_service.update_source_url(file_id, body.source_url)
+    except ValueError as e:
+        detail = str(e)
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if detail == "文件不存在"
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=detail,
+        )
+
+    return ResponseBase(
+        success=True,
+        message="源链接已更新",
+        data={"id": updated.id, "source_url": updated.source_url},
+    )
