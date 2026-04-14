@@ -186,3 +186,11 @@ htmlcov/
 # ============================================
 docs/_build/
 site/
+
+# ============================================
+# Local artifacts
+# ============================================
+deepsearch-api-ops-skill-package*.zip
+ScreenShot_*.png
+S560-R.png
+docs/迭代修复与部署记录_2026-03-24.md
