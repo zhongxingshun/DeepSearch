@@ -46,6 +46,12 @@ class File(Base):
     # 关系
     uploader = relationship("User", back_populates="files")
     tasks = relationship("Task", back_populates="file", lazy="dynamic")
+    share_links = relationship(
+        "FileShareLink",
+        back_populates="file",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def __repr__(self) -> str:
         return f"<File(id={self.id}, filename='{self.filename}', status='{self.index_status}')>"

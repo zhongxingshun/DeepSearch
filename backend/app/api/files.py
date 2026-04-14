@@ -9,11 +9,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.core.database import get_db
 from app.dependencies import get_current_user, get_client_ip, require_admin
+from app.models.file_share_link import FileShareLink
 from app.models.user import User
 from app.schemas.file import (
+    FileShareLinkCreateRequest,
+    FileShareLinkEnvelope,
+    FileShareLinkResponse,
     FileResponse as FileResponseSchema,
     FileListResponse,
     FileStatusResponse,
@@ -30,8 +33,49 @@ from app.schemas.file import (
 from app.schemas.common import ResponseBase, PaginationMeta
 from app.services.file_service import FileService
 from app.services.audit_service import AuditService
+from app.services.share_link_service import ShareLinkService
+from app.config import settings
 
 router = APIRouter()
+
+
+def build_share_link_response(
+    request: Request,
+    file,
+    share_link: FileShareLink,
+) -> FileShareLinkEnvelope:
+    """构造短链响应。"""
+    if settings.public_base_url:
+        short_url = f"{settings.public_base_url.rstrip('/')}/s/{share_link.code}"
+    else:
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+
+        if forwarded_host:
+            scheme = forwarded_proto or request.url.scheme
+            short_url = str(request.url_for("download_shared_file", code=share_link.code).replace(
+                scheme=scheme,
+                netloc=forwarded_host,
+            ))
+        else:
+            short_url = str(request.url_for("download_shared_file", code=share_link.code))
+
+    return FileShareLinkEnvelope(
+        success=True,
+        data=FileShareLinkResponse(
+            id=share_link.id,
+            file_id=file.id,
+            filename=file.filename,
+            code=share_link.code,
+            short_url=short_url,
+            download_url=short_url,
+            is_active=share_link.is_active,
+            download_count=share_link.download_count,
+            max_downloads=share_link.max_downloads,
+            expires_at=share_link.expires_at,
+            created_at=share_link.created_at,
+        ),
+    )
 
 
 @router.post("/upload", response_model=FileUploadResponse)
@@ -398,6 +442,101 @@ async def get_file(
     )
 
 
+@router.get("/{file_id}/share-link", response_model=FileShareLinkEnvelope)
+async def get_file_share_link(
+    file_id: int,
+    request: Request,
+    ensure: bool = Query(False, description="不存在时是否自动创建"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取文件短链接。"""
+    file_service = FileService(db)
+    share_link_service = ShareLinkService(db)
+
+    file = await file_service.get_file_by_id(file_id)
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文件不存在",
+        )
+
+    share_link = await share_link_service.get_active_share_link(
+        file_id=file_id,
+        created_by=current_user.id,
+    )
+    if share_link is None and ensure:
+        share_link = await share_link_service.create_or_get_share_link(
+            file_id=file_id,
+            created_by=current_user.id,
+        )
+        await db.commit()
+    elif share_link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="当前文件暂无可用分享链接",
+        )
+
+    return build_share_link_response(request, file, share_link)
+
+
+@router.post("/{file_id}/share-link", response_model=FileShareLinkEnvelope)
+async def create_file_share_link(
+    file_id: int,
+    request: Request,
+    body: Optional[FileShareLinkCreateRequest] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建或刷新文件短链接。"""
+    file_service = FileService(db)
+    share_link_service = ShareLinkService(db)
+
+    file = await file_service.get_file_by_id(file_id)
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文件不存在",
+        )
+
+    share_link = await share_link_service.create_or_get_share_link(
+        file_id=file_id,
+        created_by=current_user.id,
+        expires_in_hours=body.expires_in_hours if body else None,
+        max_downloads=body.max_downloads if body else None,
+        force_new=body is not None and (
+            body.expires_in_hours is not None or body.max_downloads is not None
+        ),
+    )
+    await db.commit()
+
+    return build_share_link_response(request, file, share_link)
+
+
+@router.delete("/{file_id}/share-link/{share_id}", response_model=ResponseBase)
+async def revoke_file_share_link(
+    file_id: int,
+    share_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动停用文件短链接。"""
+    share_link_service = ShareLinkService(db)
+    share_link = await share_link_service.revoke_share_link(
+        share_id=share_id,
+        file_id=file_id,
+        created_by=current_user.id,
+    )
+    if share_link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="分享链接不存在",
+        )
+
+    await db.commit()
+    return ResponseBase(success=True, message="分享链接已失效")
+
+
 @router.get("/{file_id}/download")
 async def download_file(
     file_id: int,
@@ -436,6 +575,7 @@ async def download_file(
         file_id=file_id,
         filename=file.filename,
         ip_address=ip_address,
+        details={"via_share_link": False},
     )
     await db.commit()
     

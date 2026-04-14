@@ -92,6 +92,40 @@ class FileSourceUrlUpdateRequest(BaseModel):
     source_url: Optional[str] = Field(None, description="源链接，可为空")
 
 
+class FileShareLinkCreateRequest(BaseModel):
+    """创建文件分享短链请求"""
+
+    expires_in_hours: Optional[int] = Field(
+        None, ge=1, le=24 * 365, description="链接有效期（小时）"
+    )
+    max_downloads: Optional[int] = Field(
+        None, ge=1, description="最大下载次数，为空表示不限次数"
+    )
+
+
+class FileShareLinkResponse(BaseModel):
+    """文件分享短链响应"""
+
+    id: int
+    file_id: int
+    filename: str
+    code: str
+    short_url: str
+    download_url: str
+    is_active: bool
+    download_count: int
+    max_downloads: Optional[int] = None
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class FileShareLinkEnvelope(BaseModel):
+    """文件分享短链统一响应"""
+
+    success: bool = True
+    data: FileShareLinkResponse
+
+
 class FolderInfo(BaseModel):
     """文件夹信息"""
     path: str

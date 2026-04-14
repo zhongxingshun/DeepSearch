@@ -13,6 +13,7 @@
 - 返回格式:
   - 成功时通常返回 `success / data / message`
   - 校验或业务错误通常返回 `4xx`，错误信息在 `detail`
+- Swagger 中公开下载短链不在 `/api/v1` 下，而是根路径 `/s/{code}`
 
 ## 1. 认证 Auth
 
@@ -260,6 +261,10 @@
 - `created_at`
 - `updated_at`
 
+说明：
+- 文件列表里的 `id` 就是后续下载、预览、生成短链接要使用的 `file_id`
+- 前端表格、预览抽屉、搜索结果中的下载动作，本质上都是围绕这个 `id`
+
 ### `GET /files/folders/tree`
 获取文件夹树或子文件夹列表。
 
@@ -322,6 +327,10 @@
 
 ### `GET /files/{file_id}`
 获取单个文件详情。
+
+说明：
+- 如果你已经知道一个文件 ID，可以用这个接口回查文件名、目录、类型、状态等信息
+- 这个接口的路径参数 `{file_id}` 与列表返回中的 `id` 是同一个值
 
 ### `GET /files/{file_id}/download`
 下载文件。
@@ -418,6 +427,103 @@
 
 规则：
 - 仅接受合法 `http / https` URL
+
+### `GET /files/{file_id}/share-link`
+获取指定文件当前有效的分享短链接。
+
+查询参数：
+- `ensure`: 可选，`true | false`
+
+规则：
+- `ensure=false` 或不传时：仅查询当前有效短链接，不存在则返回 `404`
+- `ensure=true` 时：若当前没有有效短链接，会自动创建一个
+- 需要登录态
+
+响应示例：
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "file_id": 13,
+    "filename": "网页-产品详情页-A01.jpg",
+    "code": "NOCWmF9HzT",
+    "short_url": "http://192.168.24.136:3200/s/NOCWmF9HzT",
+    "download_url": "http://192.168.24.136:3200/s/NOCWmF9HzT",
+    "is_active": true,
+    "download_count": 1,
+    "max_downloads": null,
+    "expires_at": "2026-04-15T07:55:07.971466",
+    "created_at": "2026-04-14T07:55:07.955787"
+  }
+}
+```
+
+说明：
+- 前端“复制短链接”就是调用这个接口
+- 实际业务里通常取 `data.short_url`
+- 当前默认有效期为 `24` 小时
+
+### `POST /files/{file_id}/share-link`
+创建或刷新指定文件的分享短链接。
+
+请求体：
+```json
+{
+  "expires_in_hours": 24,
+  "max_downloads": null
+}
+```
+
+字段说明：
+- `expires_in_hours`: 可选，链接有效期（小时）；不传时默认 `24`
+- `max_downloads`: 可选，最大下载次数；`null` 表示不限制
+
+响应：
+- 返回结构与 `GET /files/{file_id}/share-link` 相同
+
+说明：
+- 如果同一用户对同一文件已经有有效短链接，当前实现会优先复用有效链接
+
+### `DELETE /files/{file_id}/share-link/{share_id}`
+失效一个分享短链接。
+
+说明：
+- 需要登录态
+- 失效后该短链接不可再下载
+
+### `GET /s/{code}`
+公开下载分享短链接指向的文件。
+
+说明：
+- 这是公开接口，不需要登录
+- 返回文件流，浏览器会直接触发下载
+- 若链接不存在、已过期、被禁用或文件已丢失，会返回 `404`
+- 该接口不在 `/api/v1` 前缀下
+
+示例：
+```text
+http://192.168.24.136:3200/s/NOCWmF9HzT
+```
+
+### `file_id` 如何获取
+
+常见方式：
+- 从 `GET /files` 返回的 `data[].id` 获取
+- 从 `POST /files/upload` 返回的 `file_id` 获取
+- 从 `GET /search` 返回的 `results[].file_id` 获取
+
+示例 1：先按文件名查列表，再拿 `id`
+```bash
+curl 'http://127.0.0.1:3200/api/v1/files?keyword=网页-产品详情页' \
+  -H 'Authorization: Bearer <token>'
+```
+
+示例 2：拿到 `file_id=13` 后生成或获取短链接
+```bash
+curl 'http://127.0.0.1:3200/api/v1/files/13/share-link?ensure=true' \
+  -H 'Authorization: Bearer <token>'
+```
 
 ## 5. 管理后台 Admin
 
@@ -564,3 +670,6 @@
 - `search/suggest` 当前使用 `POST + Query 参数`，这是现实现状
 - `admin/logs` 当前过滤参数是 `action_type`，不是 `action`
 - 远端部署后如果前端容器显示 `health: starting / unhealthy`，需要结合实际访问和 `/api/v1/health` 一起判断
+- 分享短链接的对外地址优先使用后端配置的 `PUBLIC_BASE_URL`
+- 当前本地 Docker 环境会返回局域网地址，例如 `http://192.168.24.136:3200/s/{code}`
+- 如果要分享给别人，对方必须能够访问这台机器的对应 IP/端口

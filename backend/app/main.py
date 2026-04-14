@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.core.database import close_db, ensure_schema_compatibility, init_db
-from app.api import auth, search, files, history, admin, health
+from app.api import auth, search, files, history, admin, health, share
 from app.services.meilisearch_client import meili_client
 
 
@@ -56,6 +56,7 @@ app.include_router(search.router, prefix="/api/v1/search", tags=["搜索"])
 app.include_router(files.router, prefix="/api/v1/files", tags=["文件"])
 app.include_router(history.router, prefix="/api/v1/history", tags=["搜索历史"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
+app.include_router(share.router, tags=["分享"])
 
 
 @app.get("/", include_in_schema=False)

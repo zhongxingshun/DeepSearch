@@ -11,15 +11,18 @@ services:
       dockerfile: Dockerfile
     container_name: deepsearch-frontend
     restart: unless-stopped
+    environment:
+      - NO_PROXY=localhost,127.0.0.1,backend,postgres,redis,meilisearch,.local,169.254/16
+      - no_proxy=localhost,127.0.0.1,backend,postgres,redis,meilisearch,.local,169.254/16
     ports:
-      - "3200:80"
+      - "${FRONTEND_PORT:-3200}:80"
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - deepsearch-network
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health" ]
+      test: [ "CMD-SHELL", "HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= wget --no-verbose --tries=1 --spider http://127.0.0.1:80/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,6 +53,9 @@ services:
       - APP_SECRET_KEY=${APP_SECRET_KEY:-change-this-app-secret}
       - FILE_STORAGE_PATH=/data/files
       - BACKUP_STORAGE_PATH=/data/backups
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://192.168.24.136:3200}
+      - NO_PROXY=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
+      - no_proxy=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
     volumes:
       - file-storage:/data/files
       - backup-storage:/data/backups
@@ -94,6 +100,8 @@ services:
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-deepsearch_meili_key}
       - FILE_STORAGE_PATH=/data/files
       - BACKUP_STORAGE_PATH=/data/backups
+      - NO_PROXY=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
+      - no_proxy=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
     volumes:
       - file-storage:/data/files
       - backup-storage:/data/backups
@@ -102,6 +110,8 @@ services:
       - redis
     networks:
       - deepsearch-network
+    healthcheck:
+      disable: true
 
   # ========================================
   # Celery Beat (定时任务)
@@ -117,10 +127,14 @@ services:
       - APP_ENV=production
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - NO_PROXY=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
+      - no_proxy=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
     depends_on:
       - celery-worker
     networks:
       - deepsearch-network
+    healthcheck:
+      disable: true
 
   # ========================================
   # PostgreSQL 数据库
@@ -138,7 +152,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "127.0.0.1:5432:5432" # 仅本机可访问
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # 仅本机可访问
     networks:
       - deepsearch-network
     healthcheck:
@@ -159,7 +173,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "127.0.0.1:6379:6379" # 仅本机可访问
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379" # 仅本机可访问
     networks:
       - deepsearch-network
     healthcheck:
@@ -182,7 +196,7 @@ services:
     volumes:
       - meilisearch-data:/meili_data
     ports:
-      - "127.0.0.1:7700:7700" # 仅本机可访问
+      - "127.0.0.1:${MEILI_PORT:-7700}:7700" # 仅本机可访问
     networks:
       - deepsearch-network
     healthcheck:

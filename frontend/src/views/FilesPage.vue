@@ -261,9 +261,22 @@
               <el-button v-if="isAdmin" size="small" link type="danger" @click="deleteFile(row)">
                 {{ t('common.delete') }}
               </el-button>
-              <el-button v-if="!isAdmin" size="small" link type="primary" @click="downloadFile(row)">
-                {{ t('common.download') }}
-              </el-button>
+              <el-dropdown
+                v-if="!isAdmin"
+                trigger="click"
+                @command="(command) => handleDownloadCommand(command, row)"
+              >
+                <el-button size="small" link type="primary">
+                  {{ t('common.download') }}
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                    <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
             <div class="table-actions__row">
               <el-button
@@ -340,9 +353,18 @@
             >
               {{ t('files.sourceLink') }}
             </el-button>
-            <el-button type="primary" @click="downloadFile(previewFile)">
-              {{ t('files.downloadFile') }}
-            </el-button>
+            <el-dropdown trigger="click" @command="(command) => handleDownloadCommand(command, previewFile!)">
+              <el-button type="primary">
+                {{ t('files.downloadFile') }}
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                  <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -371,9 +393,18 @@
             <div class="preview-no-visual">
               <el-icon :size="40" color="#dcdfe6"><Document /></el-icon>
               <p>{{ t('files.unsupportedPreview') }}</p>
-              <el-button type="primary" plain @click="downloadFile(previewFile)">
-                {{ t('files.downloadToView') }}
-              </el-button>
+              <el-dropdown trigger="click" @command="(command) => handleDownloadCommand(command, previewFile!)">
+                <el-button type="primary" plain>
+                  {{ t('files.downloadToView') }}
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                    <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </div>
@@ -654,7 +685,7 @@ import {
   Upload, Folder, Search, Refresh, Loading, Warning, Document,
   Picture, Tickets, UploadFilled, FolderOpened,
   CircleCheckFilled, CircleCloseFilled, RefreshRight, HomeFilled,
-  FolderAdd, Delete, EditPen,
+  FolderAdd, Delete, EditPen, ArrowDown,
 } from '@element-plus/icons-vue'
 
 const loading = ref(false)
@@ -766,20 +797,11 @@ const loadSubfolders = async () => {
   try {
     const res = await fileApi.getFolders(currentFolder.value === '/' ? undefined : currentFolder.value)
     if (currentFolder.value === '/') {
-      // 根目录：显示顶级文件夹
-      // 从所有文件夹中提取顶级文件夹
-      const topLevel: Record<string, { path: string; name: string; file_count: number }> = {}
-      for (const f of res.folders) {
-        if (f.path === '/') continue
-        const parts = f.path.split('/').filter(Boolean)
-        const topName = parts[0]
-        const topPath = '/' + topName
-        if (!topLevel[topPath]) {
-          topLevel[topPath] = { path: topPath, name: topName, file_count: 0 }
-        }
-        topLevel[topPath].file_count += f.file_count
-      }
-      subfolders.value = Object.values(topLevel)
+      // 根目录：只展示直接子文件夹，避免把后端已累计过的 file_count 再次重复相加
+      subfolders.value = (res.folders || []).filter((folder: any) => {
+        if (!folder.path || folder.path === '/') return false
+        return folder.path.split('/').filter(Boolean).length === 1
+      })
     } else {
       subfolders.value = res.folders || []
     }
@@ -834,6 +856,13 @@ const loadFiles = async () => {
       params.folder = currentFolder.value
     }
     const response = await fileApi.getFiles(params)
+
+    // 当前页越界时自动回到第一页，避免列表为空但总数仍大于 0
+    if (response.total > 0 && response.data.length === 0 && page.value > 1) {
+      page.value = 1
+      return await loadFiles()
+    }
+
     files.value = response.data
     total.value = response.total
     selectedFiles.value = []
@@ -863,26 +892,41 @@ const refreshFilePageData = () => {
 
 let sourceLinkClickTimer: number | null = null
 
+const copyText = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const input = document.createElement('textarea')
+  input.value = text
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.focus()
+  input.select()
+  document.execCommand('copy')
+  document.body.removeChild(input)
+}
+
 const copySourceUrl = async (sourceUrl?: string | null) => {
   if (!sourceUrl) return
 
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(sourceUrl)
-    } else {
-      const input = document.createElement('textarea')
-      input.value = sourceUrl
-      input.style.position = 'fixed'
-      input.style.opacity = '0'
-      document.body.appendChild(input)
-      input.focus()
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
-    }
+    await copyText(sourceUrl)
     ElMessage.success(t('files.sourceLinkCopied'))
   } catch {
     ElMessage.error(t('files.sourceLinkCopyFailed'))
+  }
+}
+
+const copyShareLinkForFile = async (fileId: number) => {
+  try {
+    const response = await fileApi.getShareLink(fileId, true)
+    await copyText(response.data.short_url)
+    ElMessage.success(t('files.shareLinkCopied'))
+  } catch {
+    ElMessage.warning(t('files.shareLinkCopyFailed'))
   }
 }
 
@@ -1072,85 +1116,95 @@ const retryFailedUploadItems = async () => {
 
 // 触发文件夹选择
 const triggerFolderUpload = () => {
+  if (folderInputRef.value) {
+    folderInputRef.value.value = ''
+  }
   folderInputRef.value?.click()
 }
 
 // 处理文件夹选择结果
 const handleFolderSelected = (event: Event) => {
   const input = event.target as HTMLInputElement
-  const fileList = input.files
-  if (!fileList || fileList.length === 0) return
-  
-  // 提取文件夹名称
-  const firstPath = (fileList[0] as any).webkitRelativePath || ''
-  folderName.value = firstPath.split('/')[0] || '未知文件夹'
-  
-  // 过滤支持的文件类型
-  const validFiles: any[] = []
-  let skipped = 0
-  skippedStats.hidden = 0
-  skippedStats.empty = 0
-  skippedStats.unsupported = 0
-  
-  for (let i = 0; i < fileList.length; i++) {
-    const file = fileList[i]
-    const relativePath = (file as any).webkitRelativePath || file.name
-    const ext = file.name.split('.').pop()?.toLowerCase() || ''
-    
-    // 跳过隐藏文件和系统文件
-    if (file.name.startsWith('.') || file.name.startsWith('~')) {
-      skipped++
-      skippedStats.hidden++
-      continue
+
+  try {
+    const fileList = input.files
+    if (!fileList || fileList.length === 0) return
+
+    // 提取文件夹名称
+    const firstPath = (fileList[0] as any).webkitRelativePath || ''
+    folderName.value = firstPath.split('/')[0] || '未知文件夹'
+
+    // 过滤支持的文件类型
+    const validFiles: any[] = []
+    let skipped = 0
+    skippedStats.hidden = 0
+    skippedStats.empty = 0
+    skippedStats.unsupported = 0
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      const relativePath = (file as any).webkitRelativePath || file.name
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+
+      if (file.name.startsWith('.') || file.name.startsWith('~')) {
+        skipped++
+        skippedStats.hidden++
+        continue
+      }
+
+      if (file.size === 0) {
+        skipped++
+        skippedStats.empty++
+        continue
+      }
+
+      if (allowedExtensions.has(ext)) {
+        validFiles.push({
+          file,
+          relativePath,
+          status: 'pending',
+        })
+      } else {
+        skipped++
+        skippedStats.unsupported++
+      }
     }
-    
-    // 跳过空文件
-    if (file.size === 0) {
-      skipped++
-      skippedStats.empty++
-      continue
+
+    folderFiles.value = validFiles
+    skippedCount.value = skipped
+    folderProgress.value = 0
+    folderUploadedCount.value = 0
+    folderFailCount.value = 0
+    folderUploading.value = false
+
+    if (validFiles.length === 0) {
+      ElMessage.warning(t('files.noSupportedFiles'))
+      return
     }
-    
-    // 检查文件扩展名
-    if (allowedExtensions.has(ext)) {
-      validFiles.push({
-        file: file,
-        relativePath: relativePath,
-        status: 'pending',
-      })
-    } else {
-      skipped++
-      skippedStats.unsupported++
-    }
+
+    showFolderUpload.value = true
+    ElMessage.success(t('files.folderSelected', { name: folderName.value, count: validFiles.length }))
+  } catch {
+    ElMessage.error(t('files.folderSelectFailed'))
+  } finally {
+    input.value = ''
   }
-  
-  folderFiles.value = validFiles
-  skippedCount.value = skipped
-  folderProgress.value = 0
-  folderUploadedCount.value = 0
-  folderFailCount.value = 0
-  folderUploading.value = false
-  
-  if (validFiles.length === 0) {
-    ElMessage.warning(t('files.noSupportedFiles'))
-    return
-  }
-  
-  showFolderUpload.value = true
-  
-  // 重置 input，允许重复选择同一文件夹
-  input.value = ''
 }
 
 // 执行文件夹上传
 const handleFolderUpload = async () => {
-  const baseFolderPath = joinFolderPath(currentFolder.value, folderName.value)
-  await fileApi.createFolder(baseFolderPath)
+  try {
+    const baseFolderPath = joinFolderPath(currentFolder.value, folderName.value)
+    await fileApi.createFolder(baseFolderPath)
 
-  await uploadFolderItems(
-    folderFiles.value.filter((item) => item.status === 'pending'),
-    true
-  )
+    await uploadFolderItems(
+      folderFiles.value.filter((item) => item.status === 'pending'),
+      true
+    )
+  } catch (error) {
+    folderUploading.value = false
+    ElMessage.error(extractErrorMessage(error, t('files.folderCreateFailed')))
+  }
 }
 
 const uploadFolderItems = async (items: any[], resetCounters = false) => {
@@ -1484,6 +1538,15 @@ const getPreviewUrl = (fileId: number): string => {
 const downloadFile = (file: FileItem) => {
   const url = fileApi.getDownloadUrl(file.id)
   window.open(url, '_blank')
+}
+
+const handleDownloadCommand = async (command: string, file: FileItem) => {
+  if (command === 'share') {
+    await copyShareLinkForFile(file.id)
+    return
+  }
+
+  downloadFile(file)
 }
 
 // 删除文件

@@ -4,9 +4,18 @@
 """
 
 import io
+from pathlib import Path
+from urllib.parse import urlparse
+
 import pytest
 from httpx import AsyncClient
 
+from app.config import settings
+from app.core.database import get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.file import File
+from app.models.user import User
 from app.services.file_storage_service import FileStorageService
 
 
@@ -73,3 +82,93 @@ async def test_download_without_auth(async_client: AsyncClient):
     """测试未认证下载"""
     response = await async_client.get("/api/v1/files/1/download")
     assert response.status_code == 401
+
+
+@pytest.fixture
+async def share_test_context(db_session, tmp_path):
+    """创建分享短链测试所需的用户、文件和依赖覆盖。"""
+    original_storage_path = settings.file_storage_path
+    settings.file_storage_path = str(tmp_path)
+
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    user = User(
+        username="share_user",
+        email="share@example.com",
+        password_hash="hash",
+        role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    relative_path = "ab/share-test.txt"
+    full_path = Path(tmp_path) / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    content = b"shared file content"
+    full_path.write_bytes(content)
+
+    file = File(
+        filename="share-test.txt",
+        file_path=relative_path,
+        folder_path="/",
+        uploaded_by=user.id,
+        file_size=len(content),
+        file_type="text",
+        md5_hash="a" * 32,
+        index_status="completed",
+    )
+    db_session.add(file)
+    await db_session.commit()
+
+    token = create_access_token(
+        {"sub": str(user.id), "username": user.username, "role": user.role}
+    )
+
+    yield {
+        "token": token,
+        "file_id": file.id,
+        "content": content,
+    }
+
+    app.dependency_overrides.clear()
+    settings.file_storage_path = original_storage_path
+
+
+@pytest.mark.asyncio
+async def test_get_share_link_with_auth(async_client: AsyncClient, share_test_context):
+    """测试登录后可直接获取文件分享短链接。"""
+    response = await async_client.get(
+        f"/api/v1/files/{share_test_context['file_id']}/share-link",
+        params={"ensure": True},
+        headers={"Authorization": f"Bearer {share_test_context['token']}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["file_id"] == share_test_context["file_id"]
+    assert body["data"]["short_url"].endswith(f"/s/{body['data']['code']}")
+
+
+@pytest.mark.asyncio
+async def test_shared_link_download_without_auth(
+    async_client: AsyncClient,
+    share_test_context,
+):
+    """测试匿名用户可通过分享短链接直接下载。"""
+    create_response = await async_client.get(
+        f"/api/v1/files/{share_test_context['file_id']}/share-link",
+        params={"ensure": True},
+        headers={"Authorization": f"Bearer {share_test_context['token']}"},
+    )
+    share_url = create_response.json()["data"]["short_url"]
+    share_path = urlparse(share_url).path
+
+    download_response = await async_client.get(share_path)
+
+    assert download_response.status_code == 200
+    assert download_response.content == share_test_context["content"]

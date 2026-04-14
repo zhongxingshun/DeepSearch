@@ -94,19 +94,23 @@ class AuditService:
 
     async def log_file_download(
         self,
-        user_id: int,
+        user_id: Optional[int],
         file_id: int,
         filename: str,
         ip_address: Optional[str] = None,
+        details: Optional[dict[str, Any]] = None,
     ) -> AuditLog:
         """记录文件下载日志"""
+        log_details = {"filename": filename}
+        if details:
+            log_details.update(details)
         return await self.log(
             user_id=user_id,
             action_type=AuditActionType.FILE_DOWNLOAD,
             target_type="file",
             target_id=str(file_id),
             ip_address=ip_address,
-            details={"filename": filename},
+            details=log_details,
         )
 
     async def log_file_upload(

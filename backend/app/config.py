@@ -167,6 +167,9 @@ class Settings(BaseSettings):
     meili_backup_retention_days: int = Field(default=3, description="Meilisearch 备份保留天数")
     audit_log_retention_days: int = Field(default=180, description="审计日志保留天数")
     search_history_retention_days: int = Field(default=90, description="搜索历史保留天数")
+    file_share_link_expire_hours: int = Field(default=24, description="文件分享短链默认有效期（小时）")
+    file_share_link_code_length: int = Field(default=10, description="文件分享短码长度")
+    public_base_url: Optional[str] = Field(default=None, description="公开访问基地址，用于生成可分享链接")
 
 
 @lru_cache

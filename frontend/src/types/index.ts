@@ -69,6 +69,25 @@ export interface FileUploadResponse {
     task_id: string | null
 }
 
+export interface FileShareLink {
+    id: number
+    file_id: number
+    filename: string
+    code: string
+    short_url: string
+    download_url: string
+    is_active: boolean
+    download_count: number
+    max_downloads: number | null
+    expires_at: string | null
+    created_at: string
+}
+
+export interface FileShareLinkResponse {
+    success: boolean
+    data: FileShareLink
+}
+
 // ============================================
 // 搜索相关
 // ============================================

@@ -4,7 +4,12 @@
  */
 
 import http from './http'
-import type { FileListResponse, FileResponse, PaginationParams } from '@/types'
+import type {
+    FileListResponse,
+    FileResponse,
+    FileShareLinkResponse,
+    PaginationParams,
+} from '@/types'
 
 export interface FileListParams extends PaginationParams {
     file_type?: string
@@ -26,6 +31,23 @@ export const fileApi = {
      */
     async getFile(id: number): Promise<FileResponse> {
         return http.get(`/files/${id}`)
+    },
+
+    /**
+     * 获取文件分享短链接
+     */
+    async getShareLink(id: number, ensure = false): Promise<FileShareLinkResponse> {
+        return http.get(`/files/${id}/share-link`, { params: { ensure } })
+    },
+
+    /**
+     * 创建或刷新文件分享短链接
+     */
+    async createShareLink(
+        id: number,
+        payload?: { expires_in_hours?: number; max_downloads?: number | null },
+    ): Promise<FileShareLinkResponse> {
+        return http.post(`/files/${id}/share-link`, payload || {})
     },
 
     /**

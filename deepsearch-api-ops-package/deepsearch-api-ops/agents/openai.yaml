@@ -1,0 +1,4 @@
+interface:
+  display_name: "DeepSearch API Ops"
+  short_description: "Natural-language control of DeepSearch APIs"
+  default_prompt: "Use $deepsearch-api-ops to fulfill DeepSearch requests against http://192.168.10.65:3200 safely."

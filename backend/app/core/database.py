@@ -100,6 +100,41 @@ async def ensure_schema_compatibility() -> None:
                 """
             )
         )
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS file_share_links (
+                    id SERIAL PRIMARY KEY,
+                    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+                    created_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+                    code VARCHAR(32) NOT NULL UNIQUE,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    max_downloads INTEGER NULL,
+                    download_count INTEGER NOT NULL DEFAULT 0,
+                    expires_at TIMESTAMP NULL,
+                    last_accessed_at TIMESTAMP NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_share_links_file
+                ON file_share_links (file_id, created_by, is_active)
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_share_links_code
+                ON file_share_links (code)
+                """
+            )
+        )
 
 
 async def close_db() -> None:

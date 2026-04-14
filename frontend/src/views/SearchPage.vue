@@ -98,10 +98,19 @@
                   <el-icon><View /></el-icon>
                   {{ t('common.preview') }}
                 </el-button>
-                <el-button size="small" type="primary" link @click.stop="downloadFile(result)">
-                  <el-icon><Download /></el-icon>
-                  {{ t('common.download') }}
-                </el-button>
+                <el-dropdown trigger="click" @command="(command) => handleDownloadCommand(command, result)">
+                  <el-button size="small" type="primary" link @click.stop>
+                    <el-icon><Download /></el-icon>
+                    {{ t('common.download') }}
+                    <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                      <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
               </div>
             </div>
 
@@ -187,10 +196,19 @@
             >
               {{ t('files.sourceLink') }}
             </el-button>
-            <el-button type="primary" @click="downloadFile(previewFile)">
-              <el-icon><Download /></el-icon>
-              {{ t('searchPage.downloadFile') }}
-            </el-button>
+            <el-dropdown trigger="click" @command="(command) => handleDownloadCommand(command, previewFile!)">
+              <el-button type="primary">
+                <el-icon><Download /></el-icon>
+                {{ t('searchPage.downloadFile') }}
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                  <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -227,9 +245,18 @@
             <div class="preview-no-visual">
               <el-icon :size="40" color="#dcdfe6"><Document /></el-icon>
               <p>{{ t('searchPage.noVisualPreview') }}</p>
-              <el-button type="primary" plain @click="downloadFile(previewFile)">
-                {{ t('searchPage.downloadToView') }}
-              </el-button>
+              <el-dropdown trigger="click" @command="(command) => handleDownloadCommand(command, previewFile!)">
+                <el-button type="primary" plain>
+                  {{ t('searchPage.downloadToView') }}
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="download">{{ t('files.directDownload') }}</el-dropdown-item>
+                    <el-dropdown-item command="share">{{ t('files.copyShareLink') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </div>
@@ -264,7 +291,7 @@ import dayjs from 'dayjs'
 import type { SearchResult } from '@/types'
 import { useI18n } from '@/i18n'
 import {
-  Search, Clock, Download, Document, Picture, Tickets, View, Folder,
+  Search, Clock, Download, Document, Picture, Tickets, View, Folder, ArrowDown,
 } from '@element-plus/icons-vue'
 
 const keyword = ref('')
@@ -395,32 +422,56 @@ const downloadFile = (result: SearchResult) => {
   window.open(url, '_blank')
 }
 
+const handleDownloadCommand = async (command: string, result: SearchResult) => {
+  if (command === 'share') {
+    await copyShareLinkForFile(result.file_id)
+    return
+  }
+
+  downloadFile(result)
+}
+
 const openSourceUrlDialog = (result: SearchResult) => {
   sourceUrlTargetFileId.value = result.file_id
   sourceUrlForm.source_url = result.source_url || ''
   showSourceUrlDialog.value = true
 }
 
+const copyText = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const input = document.createElement('textarea')
+  input.value = text
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.focus()
+  input.select()
+  document.execCommand('copy')
+  document.body.removeChild(input)
+}
+
 const copySourceUrl = async (sourceUrl?: string | null) => {
   if (!sourceUrl) return
 
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(sourceUrl)
-    } else {
-      const input = document.createElement('textarea')
-      input.value = sourceUrl
-      input.style.position = 'fixed'
-      input.style.opacity = '0'
-      document.body.appendChild(input)
-      input.focus()
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
-    }
+    await copyText(sourceUrl)
     ElMessage.success(t('files.sourceLinkCopied'))
   } catch {
     ElMessage.error(t('files.sourceLinkCopyFailed'))
+  }
+}
+
+const copyShareLinkForFile = async (fileId: number) => {
+  try {
+    const response = await fileApi.getShareLink(fileId, true)
+    await copyText(response.data.short_url)
+    ElMessage.success(t('files.shareLinkCopied'))
+  } catch {
+    ElMessage.warning(t('files.shareLinkCopyFailed'))
   }
 }
 

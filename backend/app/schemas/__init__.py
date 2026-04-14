@@ -16,6 +16,9 @@ from app.schemas.file import (
     FileResponse,
     FileListResponse,
     FileStatusResponse,
+    FileShareLinkCreateRequest,
+    FileShareLinkResponse,
+    FileShareLinkEnvelope,
 )
 from app.schemas.search import (
     SearchRequest,
@@ -41,6 +44,9 @@ __all__ = [
     "FileResponse",
     "FileListResponse",
     "FileStatusResponse",
+    "FileShareLinkCreateRequest",
+    "FileShareLinkResponse",
+    "FileShareLinkEnvelope",
     # Search schemas
     "SearchRequest",
     "SearchResponse",
