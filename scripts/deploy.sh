@@ -43,6 +43,57 @@ warn()    { echo -e "${YELLOW}[⚠️ WARN]${NC} $1"; }
 error()   { echo -e "${RED}[❌ ERROR]${NC} $1"; }
 header()  { echo -e "\n${CYAN}${BOLD}════════════════════════════════════════${NC}"; echo -e "${CYAN}${BOLD}  $1${NC}"; echo -e "${CYAN}${BOLD}════════════════════════════════════════${NC}\n"; }
 
+backup_db() {
+    local timestamp="$1"
+    local db_file="$BACKUP_DIR/db_${timestamp}.sql.gz"
+    info "备份 PostgreSQL 数据库..."
+    docker exec deepsearch-postgres pg_dump -U deepsearch deepsearch | gzip > "$db_file"
+    success "数据库备份: $db_file ($(du -h "$db_file" | cut -f1))"
+}
+
+backup_env_file() {
+    local timestamp="$1"
+    local env_backup="$BACKUP_DIR/env_${timestamp}.bak"
+    if [ -f "$ENV_FILE" ]; then
+        info "备份环境配置..."
+        cp "$ENV_FILE" "$env_backup"
+        chmod 600 "$env_backup" 2>/dev/null || true
+        success ".env 备份: $env_backup"
+    else
+        warn ".env 不存在，跳过环境配置备份"
+    fi
+}
+
+backup_file_storage() {
+    local timestamp="$1"
+    local files_file="$BACKUP_DIR/files_${timestamp}.tar.gz"
+    info "备份文件存储..."
+    docker run --rm \
+        -v deepsearch_file-storage:/data:ro \
+        -v "$BACKUP_DIR":/backup \
+        alpine tar czf "/backup/files_${timestamp}.tar.gz" -C /data . 2>/dev/null || warn "文件备份跳过（卷可能为空）"
+    if [ -f "$files_file" ]; then
+        success "文件备份: $files_file ($(du -h "$files_file" | cut -f1))"
+    fi
+}
+
+cleanup_old_backups() {
+    find "$BACKUP_DIR" -name "db_*.sql.gz" -mtime +30 -delete 2>/dev/null || true
+    find "$BACKUP_DIR" -name "env_*.bak" -mtime +30 -delete 2>/dev/null || true
+    find "$BACKUP_DIR" -name "files_*.tar.gz" -mtime +30 -delete 2>/dev/null || true
+    info "已清理 30 天前的旧备份"
+}
+
+ensure_backup_dir_writable() {
+    mkdir -p "$BACKUP_DIR"
+
+    if [ ! -w "$BACKUP_DIR" ]; then
+        error "备份目录不可写: $BACKUP_DIR"
+        warn "请先修复目录权限，例如：sudo chown -R $(whoami):$(id -gn) '$BACKUP_DIR'"
+        exit 1
+    fi
+}
+
 # ============================================================
 # install: 完整一键部署（Docker 安装 + 密钥生成 + 构建 + 启动）
 # ============================================================
@@ -66,6 +117,9 @@ cmd_install() {
 
     # Step 5: 启动服务
     step_start
+
+    # Step 5.5: 数据库迁移
+    step_run_migrations
 
     # Step 6: 等待并健康检查
     step_health_check
@@ -240,6 +294,20 @@ step_start() {
     docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 }
 
+step_run_migrations() {
+    header "数据库迁移"
+
+    cd "$PROJECT_DIR"
+
+    info "确保数据库服务已启动..."
+    docker compose up -d postgres
+
+    info "执行 Alembic 迁移..."
+    docker compose run --rm backend alembic upgrade head
+
+    success "数据库迁移完成"
+}
+
 # ========== Step 6: 健康检查 ==========
 step_health_check() {
     header "Step 6/6: 服务健康检查"
@@ -290,7 +358,7 @@ check_all_services() {
     local all_ok=true
 
     # Backend
-    if curl -s -f http://localhost:8200/api/v1/health > /dev/null 2>&1; then
+    if curl -s -f http://localhost:3200/api/v1/health > /dev/null 2>&1; then
         success "Backend API       ✓"
     else
         error "Backend API       ✗"
@@ -425,13 +493,43 @@ cmd_logs() {
 }
 
 # ============================================================
-# 命令: update（拉取代码 + 重新构建 + 重启）
+# 命令: update（拉取代码 + 备份 + 迁移 + 重建 + 重启）
 # ============================================================
 cmd_update() {
     ensure_docker
     header "更新部署"
+    local with_files_backup=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --with-files-backup)
+                with_files_backup=true
+                ;;
+            *)
+                warn "忽略未知参数: $1"
+                ;;
+        esac
+        shift
+    done
 
     cd "$PROJECT_DIR"
+    ensure_backup_dir_writable
+
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+
+    info "更新前自动备份数据库和 .env ..."
+    backup_db "$timestamp"
+    backup_env_file "$timestamp"
+
+    if $with_files_backup; then
+        warn "已启用文件存储备份，这一步可能耗时较长并占用较多空间"
+        backup_file_storage "$timestamp"
+    else
+        info "未启用文件存储备份（如需备份文件，请使用: bash deploy.sh update --with-files-backup）"
+    fi
+
+    cleanup_old_backups
 
     # 如果有 git 仓库，先拉取
     if [ -d ".git" ]; then
@@ -442,6 +540,9 @@ cmd_update() {
 
     info "重新构建镜像..."
     docker compose build
+
+    info "先执行数据库迁移..."
+    step_run_migrations
 
     info "滚动重启服务..."
     docker compose up -d
@@ -456,32 +557,35 @@ cmd_update() {
 # ============================================================
 cmd_backup() {
     header "数据备份"
+    local with_files_backup=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --with-files-backup)
+                with_files_backup=true
+                ;;
+            *)
+                warn "忽略未知参数: $1"
+                ;;
+        esac
+        shift
+    done
 
     local timestamp
     timestamp=$(date +%Y%m%d_%H%M%S)
-    mkdir -p "$BACKUP_DIR"
+    ensure_backup_dir_writable
 
-    # 数据库备份
-    info "备份 PostgreSQL 数据库..."
-    local db_file="$BACKUP_DIR/db_${timestamp}.sql.gz"
-    docker exec deepsearch-postgres pg_dump -U deepsearch deepsearch | gzip > "$db_file"
-    success "数据库备份: $db_file ($(du -h "$db_file" | cut -f1))"
+    backup_db "$timestamp"
+    backup_env_file "$timestamp"
 
-    # 文件存储备份
-    info "备份文件存储..."
-    local files_file="$BACKUP_DIR/files_${timestamp}.tar.gz"
-    docker run --rm \
-        -v deepsearch_file-storage:/data:ro \
-        -v "$BACKUP_DIR":/backup \
-        alpine tar czf "/backup/files_${timestamp}.tar.gz" -C /data . 2>/dev/null || warn "文件备份跳过（卷可能为空）"
-    if [ -f "$files_file" ]; then
-        success "文件备份: $files_file ($(du -h "$files_file" | cut -f1))"
+    if $with_files_backup; then
+        warn "已启用文件存储备份，这一步可能耗时较长并占用较多空间"
+        backup_file_storage "$timestamp"
+    else
+        info "本次仅备份数据库和 .env（如需备份文件，请使用: bash deploy.sh backup --with-files-backup）"
     fi
 
-    # 清理 30 天前备份
-    find "$BACKUP_DIR" -name "db_*.sql.gz" -mtime +30 -delete 2>/dev/null || true
-    find "$BACKUP_DIR" -name "files_*.tar.gz" -mtime +30 -delete 2>/dev/null || true
-    info "已清理 30 天前的旧备份"
+    cleanup_old_backups
 
     success "备份完成: $BACKUP_DIR"
 }
@@ -515,8 +619,8 @@ cmd_help() {
     echo -e "使用方法: ${BOLD}bash $0 <命令>${NC}"
     echo ""
     echo "  部署命令:"
-    echo -e "    ${GREEN}install${NC}          一键部署（安装Docker + 生成密钥 + 构建 + 启动）"
-    echo -e "    ${GREEN}update${NC}           更新部署（拉取代码 + 重建 + 重启）"
+    echo -e "    ${GREEN}install${NC}          一键部署（安装Docker + 生成密钥 + 构建 + 启动 + 迁移）"
+    echo -e "    ${GREEN}update${NC} [--with-files-backup]  更新部署（默认先备份数据库 + .env，并自动执行迁移）"
     echo ""
     echo "  服务管理:"
     echo -e "    ${GREEN}start${NC}            启动所有服务"
@@ -529,7 +633,7 @@ cmd_help() {
     echo -e "    ${GREEN}logs${NC} [service]   查看日志（实时跟踪）"
     echo ""
     echo "  数据管理:"
-    echo -e "    ${GREEN}backup${NC}           备份数据库 + 文件存储"
+    echo -e "    ${GREEN}backup${NC} [--with-files-backup]  备份数据库 + .env（可选文件存储）"
     echo -e "    ${GREEN}clean${NC}            完全清理（⚠️ 删除所有数据！）"
     echo ""
     echo "  服务列表: frontend, backend, celery-worker, celery-beat, postgres, redis, meilisearch"
@@ -551,8 +655,8 @@ main() {
         status)     cmd_status ;;
         health)     cmd_health ;;
         logs)       cmd_logs "$@" ;;
-        update)     cmd_update ;;
-        backup)     cmd_backup ;;
+        update)     cmd_update "$@" ;;
+        backup)     cmd_backup "$@" ;;
         clean)      cmd_clean ;;
         help|-h|--help) cmd_help ;;
         *)

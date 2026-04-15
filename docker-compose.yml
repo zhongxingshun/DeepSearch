@@ -53,7 +53,7 @@ services:
       - APP_SECRET_KEY=${APP_SECRET_KEY:-change-this-app-secret}
       - FILE_STORAGE_PATH=/data/files
       - BACKUP_STORAGE_PATH=/data/backups
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://192.168.24.136:3200}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://192.168.10.65:3200}
       - NO_PROXY=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
       - no_proxy=localhost,127.0.0.1,postgres,redis,meilisearch,.local,169.254/16
     volumes:

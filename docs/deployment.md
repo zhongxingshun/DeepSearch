@@ -1,231 +1,267 @@
 # DeepSearch 部署文档
 
-## 目录
+## 结论先看
 
-- [环境信息](#环境信息)
-- [服务架构](#服务架构)
-- [首次部署](#首次部署)
-- [日常更新部署](#日常更新部署)
-- [服务管理](#服务管理)
-- [常见问题](#常见问题)
+当前项目只有一个推荐的部署入口：
+
+```bash
+cd /home/akuvox/DeepSearch
+bash scripts/deploy.sh update
+```
+
+不要再使用以下方式做日常更新：
+
+- `scripts/remote-deploy.sh`
+- `docs/deployment-guide.md` 里的旧流程
+- 只执行 `docker compose build && docker compose up -d`
+
+原因：
+
+- 这次项目已经有数据库迁移需求
+- `deploy.sh update` 会先备份数据库和 `.env`
+- `deploy.sh update` 会自动执行 Alembic 迁移
+- 旧流程容易出现“代码更新了，但数据库没升级”的问题
 
 ---
 
-## 环境信息
+## 当前生产环境
 
 | 项目 | 说明 |
 |------|------|
-| 服务器 | 192.168.10.65 (Ubuntu 22.04, 30GB RAM, 1.8TB SSD) |
-| SSH 账号 | akuvox / Akuvox@2025 |
-| Docker | v29.3.0 + Compose v5.1.0 |
-| Docker 镜像加速 | docker.1ms.run, docker.m.daocloud.io |
-| 项目目录（服务器） | /home/akuvox/DeepSearch |
-| 访问地址 | http://192.168.10.65:3200 |
-| 默认账号 | admin / admin123456 |
+| 服务器 | `192.168.10.65` |
+| SSH 用户 | `akuvox` |
+| 项目目录 | `/home/akuvox/DeepSearch` |
+| 对外访问 | `http://192.168.10.65:3200` |
+| 前端端口 | `3200 -> 80` |
+| 后端端口 | `8200`（仅容器内部使用，不直接暴露到宿主机） |
 
 ---
 
-## 服务架构
+## 推荐部署方式
 
-共 7 个 Docker 容器：
+### 1. 先从本地同步代码到服务器
 
-```
-                    ┌─────────────────┐
-   :3200 ──────────▶│    Frontend     │ (Nginx)
-                    │  deepsearch-    │
-                    │   frontend      │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │    Backend      │ (FastAPI + Uvicorn)
-                    │  deepsearch-    │
-                    │   backend       │
-                    └──┬─────┬─────┬──┘
-                       │     │     │
-          ┌────────────┤     │     ├────────────┐
-          │            │     │     │            │
-  ┌───────▼───┐  ┌────▼─────▼┐  ┌▼──────────┐ │
-  │ PostgreSQL│  │   Redis   │  │Meilisearch│ │
-  │   :5432   │  │   :6379   │  │   :7700   │ │
-  └───────────┘  └───────────┘  └───────────┘ │
-                       │                       │
-              ┌────────▼────────┐  ┌───────────▼──┐
-              │ Celery Worker   │  │ Celery Beat   │
-              │ (异步任务处理)    │  │ (定时任务)     │
-              └─────────────────┘  └──────────────┘
+服务器目录当前不是 Git 仓库，所以不要假设服务器上能直接 `git pull` 到最新代码。
+
+推荐用 `rsync` 同步：
+
+```bash
+rsync -avz --delete \
+  --omit-dir-times \
+  --no-perms \
+  --no-owner \
+  --no-group \
+  --exclude '.git' \
+  --exclude 'node_modules' \
+  --exclude '.venv' \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  --exclude '.env' \
+  --exclude 'logs/*' \
+  --exclude 'data/files/*' \
+  --exclude 'backups' \
+  -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+  ./ akuvox@192.168.10.65:/home/akuvox/DeepSearch/
 ```
 
-| 服务 | 容器名 | 端口 | 说明 |
-|------|--------|------|------|
-| Frontend | deepsearch-frontend | 3200→80 | Nginx 静态资源 + API 反代 |
-| Backend | deepsearch-backend | 8200 (内部) | FastAPI 4 workers |
-| Celery Worker | deepsearch-celery-worker | - | 异步任务（文件解析、索引） |
-| Celery Beat | deepsearch-celery-beat | - | 定时任务调度 |
-| PostgreSQL | deepsearch-postgres | 5432 (仅本机) | 主数据库 |
-| Redis | deepsearch-redis | 6379 (仅本机) | 缓存 + 消息队列 |
-| Meilisearch | deepsearch-meilisearch | 7700 (仅本机) | 全文搜索引擎 |
+说明：
+
+- `.env` 不同步，保留服务器现场配置
+- `data/files` 不同步，避免覆盖服务器文件存储
+- `backups` 不同步，避免覆盖服务器备份
+
+### 2. 在服务器执行更新
+
+```bash
+ssh -i ~/.ssh/id_ed25519 akuvox@192.168.10.65
+cd /home/akuvox/DeepSearch
+bash scripts/deploy.sh update
+```
+
+默认会执行：
+
+1. 备份 PostgreSQL 数据库
+2. 备份 `.env`
+3. 清理 30 天前旧备份
+4. 构建最新镜像
+5. 执行数据库迁移
+6. 重启服务
+7. 做健康检查
+
+如果本次更新明确涉及文件存储逻辑，再用：
+
+```bash
+bash scripts/deploy.sh update --with-files-backup
+```
 
 ---
 
 ## 首次部署
 
-### 前提条件
-
-- 本地已安装 `sshpass`（`brew install hudochenkov/sshpass/sshpass`）
-- 服务器 SSH 端口 22 可达
-
-### 步骤
+首次部署仍然使用：
 
 ```bash
-# 1. 将代码上传到服务器
-rsync -avz --exclude '.git' --exclude 'node_modules' --exclude '.venv' \
-  --exclude '__pycache__' --exclude '.env' --exclude 'logs/*' \
-  -e "sshpass -p 'Akuvox@2025' ssh -o StrictHostKeyChecking=no" \
-  ./ akuvox@192.168.10.65:~/DeepSearch/
-
-# 2. SSH 登录服务器执行一键部署
+cd /home/akuvox/DeepSearch
 sudo bash scripts/deploy.sh install
 ```
 
-部署脚本会自动完成：安装 Docker → 生成 .env 密钥 → 构建镜像 → 启动服务 → 健康检查。
+它会完成：
+
+1. 安装 Docker
+2. 生成 `.env`
+3. 创建目录
+4. 构建镜像
+5. 启动服务
+6. 执行数据库迁移
+7. 健康检查
+
+注意：
+
+- `install` 只适合首次部署或明确重装
+- 已有正式数据的机器，日常更新不要再跑 `install`
 
 ---
 
-## 日常更新部署
-
-改完代码后，在项目根目录执行一条命令：
+## 常用命令
 
 ```bash
-bash scripts/remote-deploy.sh
-```
+cd /home/akuvox/DeepSearch
 
-这会自动完成：**同步代码 → 重建镜像 → 重启服务**。
+# 更新部署
+bash scripts/deploy.sh update
 
-说明：
-- 当前服务器使用 `akuvox` 账号直接执行 `docker compose`，日常更新脚本不依赖 `sudo`
-- 脚本已关闭 `rsync` 的目录时间戳/属主同步，避免远端目录权限导致返回 `23`
+# 仅做备份（默认备份数据库 + .env）
+bash scripts/deploy.sh backup
 
-### 其他部署命令
+# 备份数据库 + .env + 文件卷
+bash scripts/deploy.sh backup --with-files-backup
 
-```bash
-# 完整部署（默认）
-bash scripts/remote-deploy.sh deploy
+# 查看状态
+bash scripts/deploy.sh status
 
-# 仅同步代码（不重建镜像，适合改配置文件）
-bash scripts/remote-deploy.sh sync
-
-# 仅重建镜像并重启（代码已同步的情况）
-bash scripts/remote-deploy.sh rebuild
-
-# 仅重启服务（不重建）
-bash scripts/remote-deploy.sh restart
-
-# 停止所有服务
-bash scripts/remote-deploy.sh stop
-
-# 查看服务状态
-bash scripts/remote-deploy.sh status
+# 健康检查
+bash scripts/deploy.sh health
 
 # 查看日志
-bash scripts/remote-deploy.sh logs              # 全部日志
-bash scripts/remote-deploy.sh logs backend      # 后端日志
-bash scripts/remote-deploy.sh logs frontend     # 前端日志
-bash scripts/remote-deploy.sh logs celery-worker  # Celery 日志
-```
+bash scripts/deploy.sh logs
+bash scripts/deploy.sh logs backend
 
-### 在服务器上直接管理
-
-SSH 登录服务器后：
-
-```bash
-cd ~/DeepSearch
-
-# 使用 deploy.sh
-bash scripts/deploy.sh status     # 查看状态
-bash scripts/deploy.sh health     # 健康检查
-bash scripts/deploy.sh logs       # 查看日志
-bash scripts/deploy.sh restart    # 重启
-bash scripts/deploy.sh backup     # 备份数据库+文件
-bash scripts/deploy.sh update     # git pull + 重建 + 重启
+# 重启服务
+bash scripts/deploy.sh restart
 ```
 
 ---
 
-## 服务管理
+## 备份说明
 
-### 查看容器状态
+默认备份内容：
+
+- PostgreSQL 数据库
+- `.env`
+
+可选备份内容：
+
+- 文件存储卷 `deepsearch_file-storage`
+
+默认不备份文件卷的原因：
+
+- 文件卷可能很大
+- 大多数代码更新不会直接修改原始文件内容
+- 数据库和 `.env` 是每次更新都应该优先保护的内容
+
+备份目录：
 
 ```bash
-ssh akuvox@192.168.10.65
-cd ~/DeepSearch
-docker compose ps
+/home/akuvox/DeepSearch/backups
 ```
 
-### 重启单个服务
+如果脚本提示备份目录不可写，先修权限：
 
 ```bash
-docker compose restart backend
-docker compose restart celery-worker
+sudo chown -R akuvox:akuvox /home/akuvox/DeepSearch/backups
 ```
 
-### 查看实时日志
+---
+
+## 数据库迁移说明
+
+这套项目已经接入 Alembic，部署时不要再手工只跑 `docker compose up -d`。
+
+原因：
+
+- 新代码可能依赖新表或新字段
+- 如果不迁移，服务可能能启动，但功能会报错
+
+当前推荐做法就是：
 
 ```bash
-docker compose logs -f backend          # 后端
-docker compose logs -f celery-worker    # Celery
-docker compose logs -f --tail 100       # 全部（最近100行）
+bash scripts/deploy.sh update
 ```
 
-### 数据备份
+脚本会自动执行：
 
 ```bash
-bash scripts/deploy.sh backup
-# 备份文件保存在 ~/DeepSearch/backups/
-# 自动清理 30 天前的旧备份
+docker compose run --rm backend alembic upgrade head
 ```
 
-### 完全清理重装
+### 老库第一次接入 Alembic 的特殊情况
+
+如果数据库里已经有业务表，但还没有 `alembic_version`，首次迁移可能会报：
+
+- `relation "users" already exists`
+
+这代表数据库已有旧表，但还没建立 Alembic 基线。
+
+正确处理方式：
+
+1. 先确认现有库结构就是初始版本
+2. 执行：
 
 ```bash
-# ⚠️ 会删除所有数据！
+docker compose run --rm backend alembic stamp 001_initial
+docker compose run --rm backend alembic upgrade head
+```
+
+不要直接删除旧表重跑。
+
+---
+
+## 健康检查说明
+
+健康检查以这两个地址为准：
+
+```bash
+http://127.0.0.1:3200/health
+http://127.0.0.1:3200/api/v1/health
+```
+
+说明：
+
+- 前端通过 `3200` 暴露到宿主机
+- 后端由前端 Nginx 代理出去
+- 不要再用宿主机 `localhost:8200` 判断服务是否可用
+
+---
+
+## 禁止事项
+
+以下动作不要在有正式数据的服务器上随便执行：
+
+```bash
 bash scripts/deploy.sh clean
-
-# 然后重新部署
-bash scripts/deploy.sh install
 ```
 
----
-
-## 常见问题
-
-### 1. 服务器 SSH 连不上
-
-可能是多次连接失败触发了安全策略（fail2ban），等几分钟后重试，或到服务器本机检查：
+因为它会执行：
 
 ```bash
-sudo fail2ban-client status sshd
-sudo fail2ban-client set sshd unbanip <你的IP>
+docker compose down -v --rmi all
 ```
 
-### 2. Docker 镜像拉取失败
+这会删除：
 
-服务器已配置国内镜像加速（`/etc/docker/daemon.json`），如果镜像源失效，更换：
+- 数据库卷
+- Redis 卷
+- Meilisearch 卷
+- 文件存储卷
 
-```bash
-sudo vi /etc/docker/daemon.json
-# 修改 registry-mirrors
-sudo systemctl restart docker
-```
-
-### 3. bcrypt / passlib 报错
-
-requirements.txt 已锁定 `bcrypt>=4.1.2,<5`。如果仍出现兼容性问题：
-
-```bash
-sudo docker exec --user root deepsearch-backend pip install "bcrypt<5"
-sudo docker restart deepsearch-backend
-```
-
-### 4. 数据库表结构不匹配
-
-init-db.sql 已与 ORM 模型同步。如果新增了模型字段，需同步更新 `scripts/init-db.sql`，或在服务器上手动 ALTER TABLE。
+也不要再依赖已删除的 `scripts/remote-deploy.sh`。后续统一只用 `scripts/deploy.sh`。
