@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.core.database import close_db, ensure_schema_compatibility, init_db
 from app.api import auth, search, files, history, admin, health, share
+from app.core.database import AsyncSessionLocal
+from app.services.file_service import FileService
 from app.services.meilisearch_client import meili_client
 
 
@@ -21,6 +23,8 @@ async def lifespan(app: FastAPI):
     print(f"Starting {settings.app_name} v{settings.app_version}")
     await ensure_schema_compatibility()
     await meili_client.init_index()
+    async with AsyncSessionLocal() as session:
+        await FileService(session).sync_missing_visibility_to_search_index()
     # 初始化数据库连接
     # await init_db()  # 使用 Alembic 管理迁移
     yield

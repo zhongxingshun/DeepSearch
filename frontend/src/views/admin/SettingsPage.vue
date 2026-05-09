@@ -11,6 +11,9 @@
             <el-form-item :label="t('settings.systemName')">
               <el-input v-model="settings.appName" />
             </el-form-item>
+            <el-form-item :label="t('settings.version')">
+              <el-input :model-value="appVersion" readonly />
+            </el-form-item>
             <el-form-item :label="t('settings.maxUploadSize')">
               <el-input-number v-model="settings.maxUploadSize" :min="1" :max="1024" />
               <span style="margin-left: 8px">MB</span>
@@ -63,6 +66,7 @@ import { ref, reactive } from 'vue'
 import http from '@/api/http'
 import { ElMessage } from 'element-plus'
 import { useI18n } from '@/i18n'
+import { appVersion } from '@/config/app'
 
 const settings = reactive({
   appName: 'DeepSearch',

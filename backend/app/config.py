@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         description="应用密钥"
     )
     app_name: str = Field(default="DeepSearch", description="应用名称")
-    app_version: str = Field(default="1.0.0", description="应用版本")
+    app_version: str = Field(default="20260509.01", description="应用版本")
 
     # ============================================
     # 数据库配置

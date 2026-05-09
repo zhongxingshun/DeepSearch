@@ -8,6 +8,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from app.core.access_control import VISIBILITY_PUBLIC
+
 
 class FileBase(BaseModel):
     """文件基础模型"""
@@ -36,6 +38,7 @@ class FileResponse(FileBase):
     file_size_human: str
     file_type: str
     source_url: Optional[str] = None
+    visibility_scope: str = VISIBILITY_PUBLIC
     md5_hash: Optional[str]
     index_status: str
     created_at: datetime

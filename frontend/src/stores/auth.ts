@@ -19,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
     const isAuthenticated = computed(() => !!token.value && !!user.value)
     const isAdmin = computed(() => ['admin', 'super_admin'].includes(user.value?.role || ''))
     const isSuperAdmin = computed(() => user.value?.role === 'super_admin')
+    const isInternalEmployee = computed(() => ['internal_employee', 'user'].includes(user.value?.role || ''))
+    const isExternalCustomer = computed(() => user.value?.role === 'external_customer')
     const username = computed(() => user.value?.username || '')
 
     // 登录
@@ -105,6 +107,8 @@ export const useAuthStore = defineStore('auth', () => {
         isAuthenticated,
         isAdmin,
         isSuperAdmin,
+        isInternalEmployee,
+        isExternalCustomer,
         username,
         // 方法
         login,

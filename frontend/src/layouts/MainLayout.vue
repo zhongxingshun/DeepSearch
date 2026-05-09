@@ -44,6 +44,10 @@
       </el-menu>
       
       <!-- 折叠按钮 -->
+      <div v-if="!isCollapsed" class="version-info">
+        <span>{{ t('layout.currentVersion') }}</span>
+        <strong>{{ appVersion }}</strong>
+      </div>
       <div class="collapse-btn" @click="isCollapsed = !isCollapsed">
         <el-icon :size="18">
           <component :is="isCollapsed ? 'Expand' : 'Fold'" />
@@ -118,6 +122,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
 import { useI18n } from '@/i18n'
+import { appVersion } from '@/config/app'
 import {
   Search, Folder, Clock, Setting, UserFilled,
   ArrowDown, User, Key, SwitchButton, Expand, Fold,
@@ -254,6 +259,22 @@ const handleCommand = async (command: string) => {
   &:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.54);
+
+  strong {
+    color: rgba(255, 255, 255, 0.82);
+    font-weight: 600;
   }
 }
 

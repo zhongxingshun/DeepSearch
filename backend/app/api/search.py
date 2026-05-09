@@ -51,6 +51,7 @@ async def search(
     result = await search_service.search(
         keyword=q,
         user_id=current_user.id,
+        current_user=current_user,
         page=page,
         page_size=page_size,
         file_type=file_type,
@@ -77,6 +78,7 @@ async def search(
             file_type=hit["file_type"],
             file_size=hit["file_size"],
             file_path=hit["file_path"],
+            visibility_scope=hit.get("visibility_scope", "public"),
             content_snippet=hit["content_snippet"],
             score=hit.get("score", 0),
             highlights=[

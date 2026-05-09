@@ -17,7 +17,17 @@ from app.dependencies import get_current_admin_user
 from app.models.user import User
 from app.models.file import File
 from app.models.audit_log import AuditLog
+from app.models.system_setting import SystemSetting
 from app.core.security import pwd_context
+from app.core.system_settings import IMPORTANT_ANNOUNCEMENT_KEY
+from app.core.access_control import (
+    ALLOWED_ROLES,
+    ROLE_INTERNAL_EMPLOYEE,
+    ROLE_SUPER_ADMIN,
+    can_manage_user_role,
+    normalize_role,
+    validate_role_value,
+)
 
 router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
@@ -30,7 +40,7 @@ class CreateUserRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
-    role: str = "user"
+    role: str = ROLE_INTERNAL_EMPLOYEE
 
 
 class UpdateStatusRequest(BaseModel):
@@ -41,25 +51,25 @@ class UpdateRoleRequest(BaseModel):
     role: str
 
 
-ALLOWED_ROLES = {"super_admin", "admin", "user"}
+class AnnouncementRequest(BaseModel):
+    content: str = ""
 
 
 def ensure_role_valid(role: str) -> None:
-    if role not in ALLOWED_ROLES:
+    if normalize_role(role) not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail="无效的角色类型")
 
 
 def ensure_super_admin(current_user: User) -> None:
-    if current_user.role != "super_admin":
+    if normalize_role(current_user.role) != ROLE_SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="需要超级管理员权限")
 
 
 def ensure_manageable_user(current_user: User, target_user: User) -> None:
-    if current_user.role == "super_admin":
+    if can_manage_user_role(current_user.role, target_user.role):
         return
 
-    if target_user.role != "user":
-        raise HTTPException(status_code=403, detail="管理员只能管理普通用户")
+    raise HTTPException(status_code=403, detail="没有权限管理该账号")
 
 
 # ============================================
@@ -79,7 +89,7 @@ async def list_users(db: AsyncSession = Depends(get_db)):
                 "id": u.id,
                 "username": u.username,
                 "email": getattr(u, "email", ""),
-                "role": u.role,
+                "role": normalize_role(u.role),
                 "is_active": u.is_active,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             }
@@ -95,9 +105,9 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ):
     """创建用户"""
-    ensure_role_valid(req.role)
-    if req.role != "user":
-        ensure_super_admin(current_user)
+    role = validate_role_value(req.role)
+    if not can_manage_user_role(current_user.role, role):
+        raise HTTPException(status_code=403, detail="没有权限创建该角色账号")
 
     # 检查用户名是否已存在
     existing = await db.execute(select(User).where(User.username == req.username))
@@ -113,7 +123,7 @@ async def create_user(
         username=req.username,
         email=req.email,
         password_hash=pwd_context.hash(req.password),
-        role=req.role,
+        role=role,
         is_active=True,
     )
     db.add(user)
@@ -156,17 +166,17 @@ async def update_user_role(
 ):
     """更新用户角色（仅超级管理员）"""
     ensure_super_admin(current_user)
-    ensure_role_valid(req.role)
+    role = validate_role_value(req.role)
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    if user.id == current_user.id and req.role != "super_admin":
+    if user.id == current_user.id and role != ROLE_SUPER_ADMIN:
         raise HTTPException(status_code=400, detail="不能修改当前登录超级管理员的角色")
 
-    user.role = req.role
+    user.role = role
     await db.commit()
 
     return {"message": "角色更新成功"}
@@ -188,9 +198,16 @@ async def reset_password(
 
     new_password = "deepsearch123"
     user.password_hash = pwd_context.hash(new_password)
+    user.is_active = True
+    user.failed_attempts = 0
+    user.locked_until = None
     await db.commit()
 
-    return {"message": f"密码已重置为: {new_password}"}
+    return {
+        "message": f"密码已重置为: {new_password}",
+        "new_password": new_password,
+        "data": {"new_password": new_password},
+    }
 
 
 @router.delete("/users/{user_id}")
@@ -213,6 +230,67 @@ async def delete_user(
     await db.delete(user)
     await db.commit()
     return {"message": "用户已删除"}
+
+
+# ============================================
+# 重要公告
+# ============================================
+
+@router.get("/announcement")
+async def get_announcement(db: AsyncSession = Depends(get_db)):
+    """获取重要公告（管理员后台使用）。"""
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == IMPORTANT_ANNOUNCEMENT_KEY)
+    )
+    setting = result.scalar_one_or_none()
+
+    return {
+        "success": True,
+        "data": {
+            "content": setting.value if setting else "",
+            "updated_at": setting.updated_at.isoformat() if setting else None,
+            "updated_by": setting.updated_by if setting else None,
+        },
+    }
+
+
+@router.put("/announcement")
+async def update_announcement(
+    req: AnnouncementRequest,
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新重要公告。"""
+    content = (req.content or "").strip()
+
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == IMPORTANT_ANNOUNCEMENT_KEY)
+    )
+    setting = result.scalar_one_or_none()
+
+    if setting:
+        setting.value = content
+        setting.updated_by = current_user.id
+    else:
+        setting = SystemSetting(
+            key=IMPORTANT_ANNOUNCEMENT_KEY,
+            value=content,
+            updated_by=current_user.id,
+        )
+        db.add(setting)
+
+    await db.commit()
+    await db.refresh(setting)
+
+    return {
+        "success": True,
+        "message": "重要公告已更新",
+        "data": {
+            "content": setting.value,
+            "updated_at": setting.updated_at.isoformat() if setting.updated_at else None,
+            "updated_by": setting.updated_by,
+        },
+    }
 
 
 # ============================================

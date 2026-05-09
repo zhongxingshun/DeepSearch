@@ -6,23 +6,77 @@
         <el-button v-if="isAdmin" type="warning" :icon="FolderAdd" @click="openCreateFolderDialog">
           {{ t('files.newFolder') }}
         </el-button>
-        <el-button type="primary" :icon="Upload" @click="showUpload = true">
+        <el-button v-if="isAdmin" type="primary" :icon="Upload" @click="showUpload = true">
           {{ t('files.uploadFile') }}
         </el-button>
-        <el-button type="success" :icon="FolderOpened" @click="triggerFolderUpload">
+        <el-button v-if="isAdmin" type="success" :icon="FolderOpened" @click="triggerFolderUpload">
           {{ t('files.uploadFolder') }}
         </el-button>
         <!-- 隐藏的文件夹选择 input -->
         <input
           ref="folderInputRef"
+          class="folder-picker-input"
           type="file"
           webkitdirectory
           directory
           multiple
-          style="display: none"
           @change="handleFolderSelected"
         />
       </div>
+    </div>
+
+    <div class="notice-grid">
+      <section class="notice-card">
+        <div class="notice-card__header">
+          <div class="notice-card__title">
+            <el-icon :size="18"><Warning /></el-icon>
+            <span>{{ t('files.importantAnnouncement') }}</span>
+          </div>
+          <el-button
+            v-if="isAdmin"
+            size="small"
+            link
+            type="primary"
+            :icon="EditPen"
+            @click="openAnnouncementDialog"
+          >
+            {{ t('common.edit') }}
+          </el-button>
+        </div>
+        <div v-if="announcementLines.length" class="announcement-content">
+          <p v-for="(line, index) in announcementLines" :key="index">{{ line }}</p>
+        </div>
+        <div v-else class="notice-empty">{{ t('files.noAnnouncement') }}</div>
+      </section>
+
+      <section class="notice-card">
+        <div class="notice-card__header">
+          <div class="notice-card__title">
+            <el-icon :size="18"><Upload /></el-icon>
+            <span>{{ t('files.newUploadNotice') }}</span>
+          </div>
+          <span class="notice-card__meta">{{ t('files.recentSevenDays') }}</span>
+        </div>
+        <div v-if="recentUploads.length" class="recent-upload-list">
+          <div v-for="item in recentUploads" :key="item.id" class="recent-upload-item">
+            <div class="recent-upload-dot"></div>
+            <div class="recent-upload-main">
+              <div class="recent-upload-line">
+                <span class="recent-upload-user">{{ item.uploader_name }}</span>
+                <span>{{ t('files.uploadedNoticeText') }}</span>
+                <span class="recent-upload-file" :title="item.display_name || item.filename">
+                  {{ item.display_name || item.filename }}
+                </span>
+              </div>
+              <div class="recent-upload-meta">
+                <span>{{ formatNoticeDate(item.created_at) }}</span>
+                <span v-if="item.folder_path && item.folder_path !== '/'">{{ item.folder_path }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="notice-empty">{{ t('files.noRecentUploads') }}</div>
+      </section>
     </div>
     
     <!-- 统计卡片 -->
@@ -171,6 +225,7 @@
       ref="tableRef"
       v-loading="loading"
       :data="files"
+      row-key="id"
       class="files-table"
       stripe
       @selection-change="handleSelectionChange"
@@ -211,6 +266,13 @@
         </template>
       </el-table-column>
       <el-table-column :label="t('files.size')" width="100" prop="file_size_human" />
+      <el-table-column :label="t('files.visibilityScope')" width="120">
+        <template #default="{ row }">
+          <el-tag size="small" :type="getVisibilityTagType(row.visibility_scope)">
+            {{ getVisibilityText(row.visibility_scope) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column :label="t('files.statusLabel')" width="110">
         <template #default="{ row }">
           <el-tooltip
@@ -335,6 +397,7 @@
             <h3>{{ previewFile.display_name || previewFile.filename }}</h3>
             <div class="preview-meta-row">
               <span>{{ getFileTypeLabel(previewFile.file_type) }}</span>
+              <span>{{ getVisibilityText(previewFile.visibility_scope) }}</span>
               <span>{{ previewFile.file_size_human }}</span>
               <span>{{ formatDate(previewFile.created_at) }}</span>
             </div>
@@ -417,6 +480,14 @@
         <el-icon :size="14"><FolderOpened /></el-icon>
         {{ t('files.targetFolder') }}<strong>{{ currentFolder }}</strong>
       </div>
+      <div class="visibility-field">
+        <div class="visibility-label">{{ t('files.visibilityScope') }}</div>
+        <el-radio-group v-model="uploadVisibilityScope">
+          <el-radio-button label="public">{{ t('files.visibility.public') }}</el-radio-button>
+          <el-radio-button label="internal">{{ t('files.visibility.internal') }}</el-radio-button>
+          <el-radio-button label="marketing">{{ t('files.visibility.marketing') }}</el-radio-button>
+        </el-radio-group>
+      </div>
       <el-upload
         ref="uploadRef"
         v-model:file-list="uploadFileList"
@@ -496,6 +567,14 @@
             </div>
           </div>
         </el-popover>
+      </div>
+      <div class="visibility-field">
+        <div class="visibility-label">{{ t('files.visibilityScope') }}</div>
+        <el-radio-group v-model="folderUploadVisibilityScope">
+          <el-radio-button label="public">{{ t('files.visibility.public') }}</el-radio-button>
+          <el-radio-button label="internal">{{ t('files.visibility.internal') }}</el-radio-button>
+          <el-radio-button label="marketing">{{ t('files.visibility.marketing') }}</el-radio-button>
+        </el-radio-group>
       </div>
       
       <div class="folder-file-list">
@@ -670,6 +749,23 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showAnnouncementDialog" :title="t('files.importantAnnouncement')" width="560px">
+      <el-input
+        v-model="announcementForm"
+        type="textarea"
+        :rows="6"
+        maxlength="1000"
+        show-word-limit
+        :placeholder="t('files.announcementPlaceholder')"
+      />
+      <template #footer>
+        <el-button @click="showAnnouncementDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="savingAnnouncement" @click="saveAnnouncement">
+          {{ t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -679,7 +775,7 @@ import { fileApi } from '@/api/files'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox, type UploadInstance, type TableInstance } from 'element-plus'
 import dayjs from 'dayjs'
-import type { FileItem } from '@/types'
+import type { FileItem, ImportantAnnouncement, RecentUploadItem } from '@/types'
 import { useI18n } from '@/i18n'
 import {
   Upload, Folder, Search, Refresh, Loading, Warning, Document,
@@ -698,8 +794,18 @@ const total = ref(0)
 const files = ref<FileItem[]>([])
 const selectedFiles = ref<FileItem[]>([])
 const stats = ref<any>({})
+const announcement = ref<ImportantAnnouncement>({
+  content: '',
+  updated_at: null,
+  updated_by: null,
+})
+const recentUploads = ref<RecentUploadItem[]>([])
+const showAnnouncementDialog = ref(false)
+const announcementForm = ref('')
+const savingAnnouncement = ref(false)
 const uploadRef = ref<UploadInstance>()
 const uploadFileList = ref<any[]>([])
+const uploadVisibilityScope = ref('')
 const showPreview = ref(false)
 const previewFile = ref<FileItem | null>(null)
 const previewError = ref(false)
@@ -751,6 +857,7 @@ const folderUploading = ref(false)
 const folderProgress = ref(0)
 const folderUploadedCount = ref(0)
 const folderFailCount = ref(0)
+const folderUploadVisibilityScope = ref('')
 const uploadFailedItems = computed(() =>
   uploadFileList.value.filter((item) => item.uploadStatus === 'error')
 )
@@ -775,6 +882,13 @@ const filters = reactive({
 })
 
 const acceptTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.jpg,.jpeg,.png,.gif,.bmp,.zip,.rar'
+
+const announcementLines = computed(() =>
+  (announcement.value.content || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+)
 
 // 支持的文件扩展名
 const allowedExtensions = new Set([
@@ -884,10 +998,61 @@ const loadStats = async () => {
   }
 }
 
+const loadAnnouncement = async () => {
+  try {
+    const response = await fileApi.getAnnouncement()
+    announcement.value = response.data || {
+      content: '',
+      updated_at: null,
+      updated_by: null,
+    }
+  } catch {
+    announcement.value = {
+      content: '',
+      updated_at: null,
+      updated_by: null,
+    }
+  }
+}
+
+const loadRecentUploads = async () => {
+  try {
+    const response = await fileApi.getRecentUploads(7, 20)
+    recentUploads.value = response.data || []
+  } catch {
+    recentUploads.value = []
+  }
+}
+
+const loadNoticeData = () => {
+  loadAnnouncement()
+  loadRecentUploads()
+}
+
 const refreshFilePageData = () => {
   loadFiles()
   loadStats()
   loadSubfolders()
+  loadRecentUploads()
+}
+
+const openAnnouncementDialog = () => {
+  announcementForm.value = announcement.value.content || ''
+  showAnnouncementDialog.value = true
+}
+
+const saveAnnouncement = async () => {
+  savingAnnouncement.value = true
+  try {
+    const response = await fileApi.updateAnnouncement(announcementForm.value)
+    announcement.value = response.data
+    showAnnouncementDialog.value = false
+    ElMessage.success(t('files.announcementUpdated'))
+  } catch {
+    ElMessage.error(t('files.announcementUpdateFailed'))
+  } finally {
+    savingAnnouncement.value = false
+  }
 }
 
 let sourceLinkClickTimer: number | null = null
@@ -973,6 +1138,7 @@ const extractErrorMessage = (error: any, fallback = t('files.allUploadFailed')) 
 
 const resetUploadDialogState = () => {
   uploadFileList.value = []
+  uploadVisibilityScope.value = ''
   showUpload.value = false
 }
 
@@ -1048,6 +1214,11 @@ const handleUpload = async () => {
     ElMessage.warning(t('files.selectFileWarning'))
     return
   }
+
+  if (!uploadVisibilityScope.value) {
+    ElMessage.warning(t('files.visibilityRequired'))
+    return
+  }
   
   uploading.value = true
   let successCount = 0
@@ -1064,7 +1235,8 @@ const handleUpload = async () => {
         const res = await fileApi.uploadFile(
           item.raw,
           undefined,
-          currentFolder.value !== '/' ? currentFolder.value : undefined
+          currentFolder.value !== '/' ? currentFolder.value : undefined,
+          uploadVisibilityScope.value
         )
 
         if (res.is_duplicate) {
@@ -1175,6 +1347,7 @@ const handleFolderSelected = (event: Event) => {
     folderProgress.value = 0
     folderUploadedCount.value = 0
     folderFailCount.value = 0
+    folderUploadVisibilityScope.value = ''
     folderUploading.value = false
 
     if (validFiles.length === 0) {
@@ -1193,6 +1366,11 @@ const handleFolderSelected = (event: Event) => {
 
 // 执行文件夹上传
 const handleFolderUpload = async () => {
+  if (!folderUploadVisibilityScope.value) {
+    ElMessage.warning(t('files.visibilityRequired'))
+    return
+  }
+
   try {
     const baseFolderPath = joinFolderPath(currentFolder.value, folderName.value)
     await fileApi.createFolder(baseFolderPath)
@@ -1233,7 +1411,8 @@ const uploadFolderItems = async (items: any[], resetCounters = false) => {
       const res = await fileApi.uploadFile(
         item.file,
         undefined,
-        targetFolderPath !== '/' ? targetFolderPath : undefined
+        targetFolderPath !== '/' ? targetFolderPath : undefined,
+        folderUploadVisibilityScope.value
       )
 
       if (res.is_duplicate) {
@@ -1637,6 +1816,24 @@ const getFileTypeLabel = (type: string) => {
   return labels[type] || type
 }
 
+const getVisibilityText = (scope?: string) => {
+  const labels: Record<string, string> = {
+    public: t('files.visibility.public'),
+    internal: t('files.visibility.internal'),
+    marketing: t('files.visibility.marketing'),
+  }
+  return labels[scope || 'public'] || scope || t('files.visibility.public')
+}
+
+const getVisibilityTagType = (scope?: string) => {
+  const types: Record<string, '' | 'success' | 'warning'> = {
+    public: 'success',
+    internal: '',
+    marketing: 'warning',
+  }
+  return types[scope || 'public'] || ''
+}
+
 const supportsPreview = (type: string) => ['image', 'pdf'].includes(type)
 
 const getFileTypeClass = (type: string) => `file-type-${type}`
@@ -1686,6 +1883,8 @@ const getStatusDetail = (file: FileItem) => {
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 
+const formatNoticeDate = (date?: string | null) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-'
+
 const formatFileSize = (bytes: number) => {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -1697,6 +1896,7 @@ onMounted(() => {
   loadFiles()
   loadStats()
   loadSubfolders()
+  loadNoticeData()
 })
 
 onBeforeUnmount(() => {
@@ -1712,6 +1912,155 @@ onBeforeUnmount(() => {
 .header-actions {
   display: flex;
   gap: 8px;
+}
+
+.folder-picker-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.notice-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.notice-card {
+  min-height: 150px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-shadow: var(--ds-shadow-base);
+}
+
+.notice-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.notice-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.notice-card__meta {
+  flex: none;
+  font-size: 12px;
+  color: #909399;
+}
+
+.announcement-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 116px;
+  overflow-y: auto;
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #303133;
+    word-break: break-word;
+  }
+}
+
+.notice-empty {
+  min-height: 82px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #a8abb2;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.recent-upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 116px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.recent-upload-item {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.recent-upload-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: #409eff;
+}
+
+.recent-upload-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.recent-upload-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 14px;
+  color: #606266;
+}
+
+.recent-upload-user {
+  flex: none;
+  color: #303133;
+  font-weight: 600;
+}
+
+.recent-upload-file {
+  min-width: 0;
+  overflow: hidden;
+  color: #303133;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-upload-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #a8abb2;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 900px) {
+  .notice-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stats-row {
@@ -1845,6 +2194,17 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.visibility-field {
+  margin-bottom: 16px;
+}
+
+.visibility-label {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
 }
 
 .batch-bar {

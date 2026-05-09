@@ -24,8 +24,9 @@ def upgrade() -> None:
         'users',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('username', sa.String(length=50), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False, server_default=''),
         sa.Column('password_hash', sa.String(length=255), nullable=False),
-        sa.Column('role', sa.String(length=20), nullable=False, server_default='user'),
+        sa.Column('role', sa.String(length=30), nullable=False, server_default='internal_employee'),
         sa.Column('is_active', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('failed_attempts', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('locked_until', sa.DateTime(), nullable=True),
@@ -45,6 +46,8 @@ def upgrade() -> None:
         sa.Column('uploaded_by', sa.Integer(), nullable=True),
         sa.Column('file_size', sa.BigInteger(), nullable=False),
         sa.Column('file_type', sa.String(length=50), nullable=False),
+        sa.Column('source_url', sa.String(length=2000), nullable=True),
+        sa.Column('visibility_scope', sa.String(length=30), nullable=False, server_default='public'),
         sa.Column('md5_hash', sa.String(length=32), nullable=True),
         sa.Column('index_status', sa.String(length=20), nullable=True, server_default='pending'),
         sa.Column('meilisearch_id', sa.String(length=100), nullable=True),
@@ -57,6 +60,7 @@ def upgrade() -> None:
     op.create_index('idx_files_md5', 'files', ['md5_hash'], unique=False)
     op.create_index('idx_files_status', 'files', ['index_status'], unique=False)
     op.create_index('idx_files_type', 'files', ['file_type'], unique=False)
+    op.create_index('idx_files_visibility_scope', 'files', ['visibility_scope'], unique=False)
 
     # 创建 tasks 表
     op.create_table(
@@ -108,13 +112,14 @@ def upgrade() -> None:
     op.create_index('idx_audit_user', 'audit_logs', ['user_id', 'created_at'], unique=False)
     op.create_index('idx_audit_action', 'audit_logs', ['action_type', 'created_at'], unique=False)
 
-    # 插入默认管理员账号 (密码: Admin@123)
+    # 插入默认超级管理员账号 (密码: admin123456)
     op.execute("""
-        INSERT INTO users (username, password_hash, role, is_active)
+        INSERT INTO users (username, email, password_hash, role, is_active)
         VALUES (
             'admin',
-            '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.wM9H5OqG5qhKCy',
-            'admin',
+            'admin@deepsearch.local',
+            '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS',
+            'super_admin',
             TRUE
         )
         ON CONFLICT (username) DO NOTHING

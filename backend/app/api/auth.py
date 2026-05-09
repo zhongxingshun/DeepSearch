@@ -17,6 +17,7 @@ from app.schemas.user import (
 )
 from app.schemas.common import ResponseBase
 from app.services.auth_service import AuthService
+from app.core.access_control import normalize_role
 
 router = APIRouter()
 
@@ -104,7 +105,7 @@ async def get_current_user_info(
     return UserResponse(
         id=current_user.id,
         username=current_user.username,
-        role=current_user.role,
+        role=normalize_role(current_user.role),
         is_active=current_user.is_active,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at,

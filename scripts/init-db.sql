@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) DEFAULT 'user',
+    role VARCHAR(30) DEFAULT 'internal_employee',
     is_active BOOLEAN DEFAULT true,
     failed_attempts INTEGER DEFAULT 0,
     locked_until TIMESTAMP WITH TIME ZONE,
@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS files (
     folder_path VARCHAR(1000) DEFAULT '/' NOT NULL,
     file_size BIGINT NOT NULL DEFAULT 0,
     file_type VARCHAR(50),
+    source_url VARCHAR(2000),
+    visibility_scope VARCHAR(30) DEFAULT 'public' NOT NULL,
     md5_hash VARCHAR(32) UNIQUE,
     meilisearch_id VARCHAR(100),
     uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -79,10 +81,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 创建系统配置表
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_files_md5 ON files(md5_hash);
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(index_status);
 CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type);
+CREATE INDEX IF NOT EXISTS idx_files_visibility_scope ON files(visibility_scope);
 CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_file ON tasks(file_id);

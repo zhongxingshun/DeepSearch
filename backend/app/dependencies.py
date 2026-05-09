@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.database import get_db
 from app.core.security import verify_token
+from app.core.access_control import ADMIN_ROLES
 from app.models.user import User
 from app.services.auth_service import AuthService
 
@@ -113,14 +114,14 @@ def require_role(allowed_roles: list[str]):
 
 def require_admin():
     """要求管理员权限"""
-    return require_role(["admin", "super_admin"])
+    return require_role(list(ADMIN_ROLES))
 
 
 async def get_current_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """获取当前管理员用户"""
-    if current_user.role not in {"admin", "super_admin"}:
+    if current_user.role not in ADMIN_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="需要管理员权限"

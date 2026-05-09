@@ -17,6 +17,7 @@ from app.core.security import (
     create_refresh_token,
     validate_password_strength,
 )
+from app.core.access_control import normalize_role
 from app.models.user import User
 from app.models.audit_log import AuditLog, AuditActionType
 
@@ -138,7 +139,7 @@ class AuthService:
         token_data = {
             "sub": str(user.id),
             "username": user.username,
-            "role": user.role,
+            "role": normalize_role(user.role),
         }
         
         access_token = create_access_token(token_data)

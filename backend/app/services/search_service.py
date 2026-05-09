@@ -10,8 +10,10 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.access_control import visible_file_scopes_for_user
 from app.models.file import File
 from app.models.search_history import SearchHistory
+from app.models.user import User
 from app.services.meilisearch_client import MeilisearchClient, meili_client
 
 
@@ -30,6 +32,7 @@ class SearchService:
         self,
         keyword: str,
         user_id: int,
+        current_user: Optional[User] = None,
         page: int = 1,
         page_size: int = 20,
         file_type: Optional[str] = None,
@@ -43,6 +46,7 @@ class SearchService:
         Args:
             keyword: 搜索关键词
             user_id: 用户 ID
+            current_user: 当前用户，用于按文件开放范围过滤
             page: 页码
             page_size: 每页数量
             file_type: 文件类型过滤
@@ -54,9 +58,14 @@ class SearchService:
             搜索结果
         """
         # 构建过滤条件
-        filters = None
+        filter_parts = []
         if file_type:
-            filters = f"file_type = '{file_type}'"
+            filter_parts.append(f"file_type = '{file_type}'")
+        if current_user:
+            visible_scopes = ", ".join(f"'{scope}'" for scope in visible_file_scopes_for_user(current_user))
+            filter_parts.append(f"visibility_scope IN [{visible_scopes}]")
+
+        filters = " AND ".join(filter_parts) if filter_parts else None
         
         # 构建排序
         sort = None
@@ -262,6 +271,7 @@ class SearchService:
                 "file_type": hit.get("file_type"),
                 "file_size": hit.get("file_size"),
                 "file_path": hit.get("file_path"),
+                "visibility_scope": hit.get("visibility_scope"),
                 "content_snippet": content_snippet,
                 "score": hit.get("_rankingScore", 0),
                 "highlights": [],

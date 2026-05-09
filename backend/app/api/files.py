@@ -3,15 +3,19 @@
 版本: v1.0
 """
 
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import get_current_user, get_client_ip, require_admin
+from app.models.file import File as FileModel
 from app.models.file_share_link import FileShareLink
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.file import (
     FileShareLinkCreateRequest,
@@ -35,6 +39,8 @@ from app.services.file_service import FileService
 from app.services.audit_service import AuditService
 from app.services.share_link_service import ShareLinkService
 from app.config import settings
+from app.core.access_control import validate_visibility_scope, visible_file_scopes_for_user
+from app.core.system_settings import IMPORTANT_ANNOUNCEMENT_KEY
 
 router = APIRouter()
 
@@ -83,7 +89,8 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     folder_path: Optional[str] = Form(None, description="目标文件夹路径"),
-    current_user: User = Depends(get_current_user),
+    visibility_scope: Optional[str] = Form(None, description="文件开放范围: public/internal/marketing"),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -93,16 +100,19 @@ async def upload_file(
     - 最大文件大小: 500MB
     - 自动去重: 相同 MD5 的文件不会重复存储
     - folder_path: 可指定目标文件夹
+    - visibility_scope: 必填，public=全员可见，internal=仅内部可见，marketing=仅营销可见
     """
     file_service = FileService(db)
     audit_service = AuditService(db)
     ip_address = get_client_ip(request)
     
     try:
+        visibility_scope = validate_visibility_scope(visibility_scope)
         db_file, is_duplicate, task_id = await file_service.upload_file(
             file=file,
             user_id=current_user.id,
             target_folder=folder_path,
+            visibility_scope=visibility_scope,
         )
         
         # 记录上传审计日志
@@ -136,7 +146,8 @@ async def upload_file(
 async def upload_files_batch(
     request: Request,
     files: List[UploadFile] = File(...),
-    current_user: User = Depends(get_current_user),
+    visibility_scope: Optional[str] = Form(None, description="文件开放范围: public/internal/marketing"),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -151,8 +162,20 @@ async def upload_files_batch(
             detail="单次最多上传 10 个文件",
         )
     
+    try:
+        visibility_scope = validate_visibility_scope(visibility_scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
     file_service = FileService(db)
-    results = await file_service.upload_files(files, current_user.id)
+    results = await file_service.upload_files(
+        files,
+        current_user.id,
+        visibility_scope=visibility_scope,
+    )
     
     success_count = sum(
         1 for r in results if r.get("success") and not r.get("is_duplicate")
@@ -253,6 +276,7 @@ async def list_files(
         status=status,
         keyword=keyword,
         folder_path=folder,
+        current_user=current_user,
     )
     
     total_pages = (total + page_size - 1) // page_size
@@ -271,6 +295,7 @@ async def list_files(
                 file_size_human=f.file_size_human,
                 file_type=f.file_type,
                 source_url=f.source_url,
+                visibility_scope=f.visibility_scope,
                 md5_hash=f.md5_hash,
                 index_status=f.index_status,
                 created_at=f.created_at,
@@ -299,13 +324,80 @@ async def list_folders(
     file_service = FileService(db)
     
     if parent:
-        folders = await file_service.get_subfolders(parent)
+        folders = await file_service.get_subfolders(parent, current_user=current_user)
     else:
-        folders = await file_service.get_folders()
+        folders = await file_service.get_folders(current_user=current_user)
     
     return FolderListResponse(
         folders=[FolderInfo(**f) for f in folders],
         current_path=parent or "/",
+    )
+
+
+@router.get("/announcement", response_model=ResponseBase)
+async def get_public_announcement(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取文件页重要公告。"""
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == IMPORTANT_ANNOUNCEMENT_KEY)
+    )
+    setting = result.scalar_one_or_none()
+
+    return ResponseBase(
+        success=True,
+        message="获取重要公告成功",
+        data={
+            "content": setting.value if setting else "",
+            "updated_at": setting.updated_at.isoformat() if setting else None,
+            "updated_by": setting.updated_by if setting else None,
+        },
+    )
+
+
+@router.get("/recent-uploads", response_model=ResponseBase)
+async def get_recent_uploads(
+    days: int = Query(7, ge=1, le=30, description="最近天数"),
+    limit: int = Query(20, ge=1, le=50, description="返回条数"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户可见的最近上传文件。"""
+    since = datetime.utcnow() - timedelta(days=days)
+    visible_scopes = visible_file_scopes_for_user(current_user)
+
+    result = await db.execute(
+        select(FileModel, User.username)
+        .outerjoin(User, FileModel.uploaded_by == User.id)
+        .where(
+            FileModel.created_at >= since,
+            FileModel.visibility_scope.in_(visible_scopes),
+        )
+        .order_by(desc(FileModel.created_at))
+        .limit(limit)
+    )
+
+    uploads = []
+    for file, uploader_name in result.all():
+        uploads.append(
+            {
+                "id": file.id,
+                "filename": file.filename,
+                "display_name": file.display_name,
+                "folder_path": file.folder_path,
+                "file_type": file.file_type,
+                "visibility_scope": file.visibility_scope,
+                "uploaded_by": file.uploaded_by,
+                "uploader_name": uploader_name or "系统",
+                "created_at": file.created_at.isoformat() if file.created_at else None,
+            }
+        )
+
+    return ResponseBase(
+        success=True,
+        message="获取上新通知成功",
+        data=uploads,
     )
 
 
@@ -416,7 +508,7 @@ async def get_file(
 ):
     """获取单个文件详情"""
     file_service = FileService(db)
-    file = await file_service.get_file_by_id(file_id)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
     
     if not file:
         raise HTTPException(
@@ -435,6 +527,7 @@ async def get_file(
         file_size_human=file.file_size_human,
         file_type=file.file_type,
         source_url=file.source_url,
+        visibility_scope=file.visibility_scope,
         md5_hash=file.md5_hash,
         index_status=file.index_status,
         created_at=file.created_at,
@@ -454,7 +547,7 @@ async def get_file_share_link(
     file_service = FileService(db)
     share_link_service = ShareLinkService(db)
 
-    file = await file_service.get_file_by_id(file_id)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -492,7 +585,7 @@ async def create_file_share_link(
     file_service = FileService(db)
     share_link_service = ShareLinkService(db)
 
-    file = await file_service.get_file_by_id(file_id)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -554,7 +647,7 @@ async def download_file(
     ip_address = get_client_ip(request)
     
     # 获取文件信息
-    file = await file_service.get_file_by_id(file_id)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -562,7 +655,7 @@ async def download_file(
         )
     
     # 获取文件路径
-    file_path = await file_service.get_file_path(file_id)
+    file_path = await file_service.get_accessible_file_path(file_id, current_user)
     if not file_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -604,14 +697,14 @@ async def preview_file(
     
     file_service = FileService(db)
     
-    file = await file_service.get_file_by_id(file_id)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
     if not file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件不存在",
         )
     
-    file_path = await file_service.get_file_path(file_id)
+    file_path = await file_service.get_accessible_file_path(file_id, current_user)
     if not file_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -667,6 +760,13 @@ async def get_file_status(
 ):
     """获取文件索引状态"""
     file_service = FileService(db)
+    file = await file_service.get_accessible_file_by_id(file_id, current_user)
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文件不存在",
+        )
+
     status_info = await file_service.get_file_status(file_id)
     
     if not status_info:
@@ -731,7 +831,7 @@ async def get_file_stats(
 ):
     """获取文件统计概览"""
     file_service = FileService(db)
-    stats = await file_service.get_stats()
+    stats = await file_service.get_stats(current_user=current_user)
     
     return {
         "success": True,
@@ -743,7 +843,7 @@ async def get_file_stats(
 async def retry_file(
     request: Request,
     file_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
     """

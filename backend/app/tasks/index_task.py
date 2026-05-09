@@ -72,6 +72,7 @@ def index_document(
             "file_size": file_info["file_size"],
             "file_path": file_info["file_path"],
             "uploaded_by": file_info["uploaded_by"],
+            "visibility_scope": file_info["visibility_scope"],
             "created_at": file_info["created_at"],
         }
         
@@ -178,7 +179,7 @@ def get_file_info(file_id: int) -> Optional[dict]:
         result = conn.execute(
             text("""
                 SELECT id, filename, file_path, file_type, file_size, 
-                       md5_hash, uploaded_by, created_at
+                       md5_hash, uploaded_by, visibility_scope, created_at
                 FROM files WHERE id = :file_id
             """),
             {"file_id": file_id}
@@ -194,7 +195,8 @@ def get_file_info(file_id: int) -> Optional[dict]:
                 "file_size": row[4],
                 "md5_hash": row[5],
                 "uploaded_by": row[6],
-                "created_at": row[7].isoformat() if row[7] else None,
+                "visibility_scope": row[7] or "public",
+                "created_at": row[8].isoformat() if row[8] else None,
             }
     
     return None

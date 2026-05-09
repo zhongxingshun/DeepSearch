@@ -38,6 +38,7 @@ class MeilisearchClient:
         "file_type",
         "file_id",
         "uploaded_by",
+        "visibility_scope",
         "created_at",
     ]
 
@@ -56,6 +57,7 @@ class MeilisearchClient:
         "file_size",
         "file_path",
         "folder_path",
+        "visibility_scope",
         "content",
         "created_at",
         "uploaded_by",
@@ -218,6 +220,7 @@ class MeilisearchClient:
         file_size: int,
         file_path: str,
         uploaded_by: Optional[int] = None,
+        visibility_scope: str = "public",
         created_at: Optional[str] = None,
     ) -> str:
         """
@@ -232,6 +235,7 @@ class MeilisearchClient:
             file_size: 文件大小
             file_path: 文件路径
             uploaded_by: 上传用户 ID
+            visibility_scope: 文件开放范围
             created_at: 创建时间 (ISO 格式)
             
         Returns:
@@ -250,6 +254,7 @@ class MeilisearchClient:
             "file_size": file_size,
             "file_path": file_path,
             "uploaded_by": uploaded_by,
+            "visibility_scope": visibility_scope,
             "created_at": created_at,
         }
         

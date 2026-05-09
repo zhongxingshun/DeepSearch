@@ -115,14 +115,18 @@ const getRoleText = (role?: string) => {
   const roleTextMap: Record<string, string> = {
     super_admin: t('profile.roles.super_admin'),
     admin: t('profile.roles.admin'),
-    user: t('profile.roles.user'),
+    internal_employee: t('profile.roles.internal_employee'),
+    external_customer: t('profile.roles.external_customer'),
+    user: t('profile.roles.internal_employee'),
   }
   return role ? (roleTextMap[role] || role) : '-'
 }
 const getRoleTagType = (role?: string) => {
-  const roleTypeMap: Record<string, '' | 'danger' | 'warning'> = {
+  const roleTypeMap: Record<string, '' | 'danger' | 'warning' | 'info'> = {
     super_admin: 'danger',
     admin: 'warning',
+    internal_employee: '',
+    external_customer: 'info',
     user: '',
   }
   return role ? (roleTypeMap[role] || '') : ''

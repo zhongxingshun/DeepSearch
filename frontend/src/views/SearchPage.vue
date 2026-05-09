@@ -88,6 +88,7 @@
                   <h3 class="filename" v-html="highlightKeyword(getDisplayName(result.filename))"></h3>
                   <div class="meta-row">
                     <span class="file-type-label">{{ getFileTypeLabel(result.file_type) }}</span>
+                    <span class="visibility-label">{{ getVisibilityText(result.visibility_scope) }}</span>
                     <span class="file-size">{{ formatSize(result.file_size) }}</span>
                     <span class="file-date">{{ formatDate(result.created_at) }}</span>
                   </div>
@@ -184,6 +185,7 @@
             <h3>{{ getDisplayName(previewFile.filename) }}</h3>
             <div class="preview-meta-row">
               <span>{{ getFileTypeLabel(previewFile.file_type) }}</span>
+              <span>{{ getVisibilityText(previewFile.visibility_scope) }}</span>
               <span>{{ formatSize(previewFile.file_size) }}</span>
               <span>{{ formatDate(previewFile.created_at) }}</span>
             </div>
@@ -573,6 +575,15 @@ const getFileTypeLabel = (type: string): string => {
   return labels[type] || type
 }
 
+const getVisibilityText = (scope?: string): string => {
+  const labels: Record<string, string> = {
+    public: t('files.visibility.public'),
+    internal: t('files.visibility.internal'),
+    marketing: t('files.visibility.marketing'),
+  }
+  return labels[scope || 'public'] || scope || t('files.visibility.public')
+}
+
 const supportsPreview = (type: string) => ['image', 'pdf'].includes(type)
 
 // 格式化大小
@@ -789,6 +800,14 @@ onBeforeUnmount(() => {
     border-radius: 4px;
     font-size: 12px;
     color: #909399;
+  }
+
+  .visibility-label {
+    padding: 1px 8px;
+    background: #ecf5ff;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #409eff;
   }
 }
 

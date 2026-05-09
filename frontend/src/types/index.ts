@@ -11,7 +11,7 @@ export interface User {
     id: number
     username: string
     email: string
-    role: 'super_admin' | 'admin' | 'user'
+    role: 'super_admin' | 'admin' | 'internal_employee' | 'external_customer' | 'user'
     is_active: boolean
     created_at: string
     updated_at: string
@@ -43,6 +43,7 @@ export interface FileItem {
     file_size_human: string
     file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
     source_url?: string | null
+    visibility_scope: 'public' | 'internal' | 'marketing' | string
     md5_hash: string | null
     index_status: 'pending' | 'processing' | 'completed' | 'failed'
     created_at: string
@@ -88,6 +89,24 @@ export interface FileShareLinkResponse {
     data: FileShareLink
 }
 
+export interface ImportantAnnouncement {
+    content: string
+    updated_at: string | null
+    updated_by: number | null
+}
+
+export interface RecentUploadItem {
+    id: number
+    filename: string
+    display_name?: string
+    folder_path?: string
+    file_type: string
+    visibility_scope: string
+    uploaded_by: number | null
+    uploader_name: string
+    created_at: string | null
+}
+
 // ============================================
 // 搜索相关
 // ============================================
@@ -104,6 +123,7 @@ export interface SearchResult {
     file_type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'image' | 'archive' | 'other' | string
     file_size: number
     file_path: string
+    visibility_scope: 'public' | 'internal' | 'marketing' | string
     source_url?: string | null
     content_snippet: string
     score: number

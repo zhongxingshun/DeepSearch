@@ -8,7 +8,9 @@ import type {
     FileListResponse,
     FileResponse,
     FileShareLinkResponse,
+    ImportantAnnouncement,
     PaginationParams,
+    RecentUploadItem,
 } from '@/types'
 
 export interface FileListParams extends PaginationParams {
@@ -31,6 +33,27 @@ export const fileApi = {
      */
     async getFile(id: number): Promise<FileResponse> {
         return http.get(`/files/${id}`)
+    },
+
+    /**
+     * 获取文件页重要公告
+     */
+    async getAnnouncement(): Promise<{ success: boolean; data: ImportantAnnouncement }> {
+        return http.get('/files/announcement')
+    },
+
+    /**
+     * 更新重要公告（管理员）
+     */
+    async updateAnnouncement(content: string): Promise<{ success: boolean; message: string; data: ImportantAnnouncement }> {
+        return http.put('/admin/announcement', { content })
+    },
+
+    /**
+     * 获取最近上传记录
+     */
+    async getRecentUploads(days = 7, limit = 20): Promise<{ success: boolean; data: RecentUploadItem[] }> {
+        return http.get('/files/recent-uploads', { params: { days, limit } })
     },
 
     /**
@@ -60,11 +83,19 @@ export const fileApi = {
     /**
      * 上传单个文件
      */
-    async uploadFile(file: File, onProgress?: (percent: number) => void, folderPath?: string): Promise<any> {
+    async uploadFile(
+        file: File,
+        onProgress?: (percent: number) => void,
+        folderPath?: string,
+        visibilityScope?: string,
+    ): Promise<any> {
         const formData = new FormData()
         formData.append('file', file)
         if (folderPath) {
             formData.append('folder_path', folderPath)
+        }
+        if (visibilityScope) {
+            formData.append('visibility_scope', visibilityScope)
         }
 
         return http.post('/files/upload', formData, {
@@ -80,11 +111,14 @@ export const fileApi = {
     /**
      * 批量上传文件
      */
-    async uploadFiles(files: File[]): Promise<any> {
+    async uploadFiles(files: File[], visibilityScope?: string): Promise<any> {
         const formData = new FormData()
         files.forEach((file) => {
             formData.append('files', file)
         })
+        if (visibilityScope) {
+            formData.append('visibility_scope', visibilityScope)
+        }
 
         return http.post('/files/upload/batch', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },

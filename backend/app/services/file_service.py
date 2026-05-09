@@ -14,7 +14,14 @@ from sqlalchemy import delete, select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.access_control import (
+    VISIBILITY_PUBLIC,
+    can_access_file_scope,
+    validate_visibility_scope,
+    visible_file_scopes_for_user,
+)
 from app.models.file import File
+from app.models.user import User
 from app.models.task import Task
 from app.services.file_storage_service import FileStorageService, file_storage
 from app.services.meilisearch_client import meili_client
@@ -100,10 +107,28 @@ class FileService:
                 "file_path": file.file_path,
                 "folder_path": file.folder_path,
                 "uploaded_by": file.uploaded_by,
+                "visibility_scope": file.visibility_scope,
                 "created_at": file.created_at.isoformat() if file.created_at else None,
             }
         )
         await meili_client.update_document(document)
+
+    async def sync_missing_visibility_to_search_index(self) -> int:
+        """为旧索引文档补齐文件开放范围字段。"""
+        result = await self.db.execute(
+            select(File).where(File.meilisearch_id.is_not(None))
+        )
+        files = list(result.scalars().all())
+
+        synced_count = 0
+        for file in files:
+            try:
+                await self._sync_file_to_search_index(file)
+                synced_count += 1
+            except Exception as exc:
+                logger.warning("同步文件开放范围到索引失败，file_id=%s, error=%s", file.id, exc)
+
+        return synced_count
 
     @staticmethod
     def _collect_ancestor_paths(path: str) -> list[str]:
@@ -117,11 +142,13 @@ class FileService:
             ancestors.append("/" + "/".join(parts[: idx + 1]))
         return ancestors
 
-    async def _folder_file_counts(self) -> dict[str, int]:
+    async def _folder_file_counts(self, current_user: Optional[User] = None) -> dict[str, int]:
+        query = select(File.folder_path, func.count(File.id).label("cnt"))
+        if current_user:
+            query = query.where(File.visibility_scope.in_(visible_file_scopes_for_user(current_user)))
+
         result = await self.db.execute(
-            select(File.folder_path, func.count(File.id).label("cnt"))
-            .group_by(File.folder_path)
-            .order_by(File.folder_path)
+            query.group_by(File.folder_path).order_by(File.folder_path)
         )
 
         counts: dict[str, int] = {"/": 0}
@@ -136,6 +163,7 @@ class FileService:
         file: UploadFile,
         user_id: int,
         target_folder: Optional[str] = None,
+        visibility_scope: str = VISIBILITY_PUBLIC,
     ) -> Tuple[File, bool, Optional[str]]:
         """
         上传单个文件
@@ -144,10 +172,13 @@ class FileService:
             file: 上传的文件
             user_id: 上传用户 ID
             target_folder: 指定目标文件夹（可选，优先使用）
+            visibility_scope: 文件开放范围
             
         Returns:
             (文件记录, 是否重复, 任务ID)
         """
+        visibility_scope = validate_visibility_scope(visibility_scope)
+
         # 验证文件名
         if not file.filename:
             raise ValueError("文件名不能为空")
@@ -168,6 +199,12 @@ class FileService:
         # 检查数据库中是否已有记录（基于 MD5）
         existing = await self.get_file_by_md5(md5_hash)
         if existing:
+            if existing.visibility_scope != visibility_scope:
+                existing.visibility_scope = visibility_scope
+                await self.db.flush()
+                await self._sync_file_to_search_index(existing)
+                await self.db.commit()
+                await self.db.refresh(existing)
             return existing, True, None
         
         # 创建文件记录
@@ -189,6 +226,7 @@ class FileService:
             uploaded_by=user_id,
             file_size=file_size,
             file_type=file_type,
+            visibility_scope=visibility_scope,
             md5_hash=md5_hash,
             index_status="pending",
         )
@@ -257,6 +295,7 @@ class FileService:
         self,
         files: List[UploadFile],
         user_id: int,
+        visibility_scope: str = VISIBILITY_PUBLIC,
     ) -> List[dict]:
         """
         批量上传文件
@@ -271,12 +310,17 @@ class FileService:
         results = []
         for file in files:
             try:
-                db_file, is_duplicate, task_id = await self.upload_file(file, user_id)
+                db_file, is_duplicate, task_id = await self.upload_file(
+                    file,
+                    user_id,
+                    visibility_scope=visibility_scope,
+                )
                 results.append({
                     "success": True,
                     "filename": file.filename,
                     "file_id": db_file.id,
                     "md5_hash": db_file.md5_hash,
+                    "visibility_scope": db_file.visibility_scope,
                     "is_duplicate": is_duplicate,
                     "task_id": task_id,
                 })
@@ -296,6 +340,13 @@ class FileService:
         )
         return result.scalar_one_or_none()
 
+    async def get_accessible_file_by_id(self, file_id: int, user: User) -> Optional[File]:
+        """根据 ID 获取当前用户可访问的文件。"""
+        file = await self.get_file_by_id(file_id)
+        if not file or not can_access_file_scope(user, file.visibility_scope):
+            return None
+        return file
+
     async def get_file_by_md5(self, md5_hash: str) -> Optional[File]:
         """根据 MD5 获取文件"""
         result = await self.db.execute(
@@ -311,6 +362,7 @@ class FileService:
         status: Optional[str] = None,
         keyword: Optional[str] = None,
         folder_path: Optional[str] = None,
+        current_user: Optional[User] = None,
     ) -> Tuple[List[File], int]:
         """
         获取文件列表（分页）
@@ -322,12 +374,18 @@ class FileService:
             status: 索引状态过滤
             keyword: 文件名关键词
             folder_path: 文件夹路径过滤
+            current_user: 当前用户，用于按文件开放范围过滤
             
         Returns:
             (文件列表, 总数)
         """
         query = select(File)
         count_query = select(func.count(File.id))
+
+        if current_user:
+            visible_scopes = visible_file_scopes_for_user(current_user)
+            query = query.where(File.visibility_scope.in_(visible_scopes))
+            count_query = count_query.where(File.visibility_scope.in_(visible_scopes))
         
         # 应用过滤条件
         if file_type:
@@ -365,6 +423,15 @@ class FileService:
         if not file:
             return None
         
+        full_path = await self.storage.get_file(file.file_path)
+        return str(full_path) if full_path else None
+
+    async def get_accessible_file_path(self, file_id: int, user: User) -> Optional[str]:
+        """获取当前用户可访问文件的完整存储路径。"""
+        file = await self.get_accessible_file_by_id(file_id, user)
+        if not file:
+            return None
+
         full_path = await self.storage.get_file(file.file_path)
         return str(full_path) if full_path else None
 
@@ -489,28 +556,40 @@ class FileService:
         await self.db.commit()
         return True
 
-    async def get_stats(self) -> dict:
+    async def get_stats(self, current_user: Optional[User] = None) -> dict:
         """获取文件统计信息"""
+        visible_scope_filter = (
+            File.visibility_scope.in_(visible_file_scopes_for_user(current_user))
+            if current_user
+            else None
+        )
+
         # 总文件数
-        total_result = await self.db.execute(select(func.count(File.id)))
+        total_query = select(func.count(File.id))
+        if visible_scope_filter is not None:
+            total_query = total_query.where(visible_scope_filter)
+        total_result = await self.db.execute(total_query)
         total = total_result.scalar() or 0
         
         # 总大小
-        size_result = await self.db.execute(select(func.sum(File.file_size)))
+        size_query = select(func.sum(File.file_size))
+        if visible_scope_filter is not None:
+            size_query = size_query.where(visible_scope_filter)
+        size_result = await self.db.execute(size_query)
         total_size = size_result.scalar() or 0
         
         # 按状态统计
-        status_result = await self.db.execute(
-            select(File.index_status, func.count(File.id))
-            .group_by(File.index_status)
-        )
+        status_query = select(File.index_status, func.count(File.id))
+        if visible_scope_filter is not None:
+            status_query = status_query.where(visible_scope_filter)
+        status_result = await self.db.execute(status_query.group_by(File.index_status))
         status_counts = {row[0]: row[1] for row in status_result.all()}
         
         # 按类型统计
-        type_result = await self.db.execute(
-            select(File.file_type, func.count(File.id))
-            .group_by(File.file_type)
-        )
+        type_query = select(File.file_type, func.count(File.id))
+        if visible_scope_filter is not None:
+            type_query = type_query.where(visible_scope_filter)
+        type_result = await self.db.execute(type_query.group_by(File.file_type))
         type_counts = {row[0]: row[1] for row in type_result.all()}
         
         return {
@@ -530,9 +609,9 @@ class FileService:
             size /= 1024
         return f"{size:.1f} PB"
 
-    async def get_folders(self) -> list:
+    async def get_folders(self, current_user: Optional[User] = None) -> list:
         """获取所有文件夹路径及其文件数"""
-        counts = await self._folder_file_counts()
+        counts = await self._folder_file_counts(current_user=current_user)
         all_paths = set(counts.keys()) | set(self.storage.list_virtual_folders())
 
         folders = []
@@ -600,11 +679,11 @@ class FileService:
         await self.db.refresh(file)
         return file
 
-    async def get_subfolders(self, parent_path: str) -> list:
+    async def get_subfolders(self, parent_path: str, current_user: Optional[User] = None) -> list:
         """获取指定路径下的直接子文件夹"""
         normalized_parent = self.normalize_folder_path(parent_path)
         prefix = normalized_parent.rstrip("/") + "/" if normalized_parent != "/" else "/"
-        counts = await self._folder_file_counts()
+        counts = await self._folder_file_counts(current_user=current_user)
         all_paths = set(counts.keys()) | set(self.storage.list_virtual_folders())
 
         subfolders: dict[str, dict] = {}

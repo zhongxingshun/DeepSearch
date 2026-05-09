@@ -8,6 +8,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.access_control import ROLE_INTERNAL_EMPLOYEE, validate_role_value
+
 
 class UserBase(BaseModel):
     """用户基础模型"""
@@ -19,14 +21,12 @@ class UserCreate(UserBase):
     """创建用户请求"""
 
     password: str = Field(..., min_length=8, description="密码")
-    role: str = Field(default="user", description="角色")
+    role: str = Field(default=ROLE_INTERNAL_EMPLOYEE, description="角色")
 
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:
-        if v not in ["super_admin", "admin", "user"]:
-            raise ValueError("角色必须是 super_admin、admin 或 user")
-        return v
+        return validate_role_value(v)
 
 
 class UserUpdate(BaseModel):
@@ -39,9 +39,7 @@ class UserUpdate(BaseModel):
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in ["super_admin", "admin", "user"]:
-            raise ValueError("角色必须是 super_admin、admin 或 user")
-        return v
+        return validate_role_value(v) if v is not None else v
 
 
 class UserResponse(UserBase):

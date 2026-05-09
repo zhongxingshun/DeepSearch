@@ -66,7 +66,8 @@
         </el-form-item>
         <el-form-item :label="t('users.role')" prop="role">
           <el-radio-group v-model="form.role">
-            <el-radio value="user">{{ t('users.regularUser') }}</el-radio>
+            <el-radio value="internal_employee">{{ t('users.internalEmployee') }}</el-radio>
+            <el-radio value="external_customer">{{ t('users.externalCustomer') }}</el-radio>
             <el-radio v-if="isSuperAdmin" value="admin">{{ t('users.admin') }}</el-radio>
             <el-radio v-if="isSuperAdmin" value="super_admin">{{ t('users.superAdmin') }}</el-radio>
           </el-radio-group>
@@ -85,15 +86,33 @@
         </el-form-item>
         <el-form-item :label="t('users.role')">
           <el-radio-group v-model="roleForm.role">
-            <el-radio value="user">{{ t('users.regularUser') }}</el-radio>
-            <el-radio value="admin">{{ t('users.admin') }}</el-radio>
-            <el-radio value="super_admin">{{ t('users.superAdmin') }}</el-radio>
+            <el-radio value="internal_employee">{{ t('users.internalEmployee') }}</el-radio>
+            <el-radio value="external_customer">{{ t('users.externalCustomer') }}</el-radio>
+            <el-radio v-if="isSuperAdmin" value="admin">{{ t('users.admin') }}</el-radio>
+            <el-radio v-if="isSuperAdmin" value="super_admin">{{ t('users.superAdmin') }}</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showRoleDialog = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleRoleSubmit">{{ t('common.ok') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showPasswordDialog" :title="t('users.passwordResetDialog')" width="460px">
+      <div class="reset-password-result">
+        <div class="reset-row">
+          <span class="reset-label">{{ t('users.username') }}</span>
+          <span class="reset-value">{{ resetPasswordResult.username }}</span>
+        </div>
+        <div class="reset-row">
+          <span class="reset-label">{{ t('users.newPassword') }}</span>
+          <code class="password-code">{{ resetPasswordResult.password }}</code>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showPasswordDialog = false">{{ t('common.close') }}</el-button>
+        <el-button type="primary" @click="copyResetPassword">{{ t('users.copyPassword') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -103,7 +122,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import dayjs from 'dayjs'
 import type { User } from '@/types'
 import { useI18n } from '@/i18n'
@@ -111,6 +130,7 @@ import { useI18n } from '@/i18n'
 const loading = ref(false)
 const showDialog = ref(false)
 const showRoleDialog = ref(false)
+const showPasswordDialog = ref(false)
 const formRef = ref<FormInstance>()
 const users = ref<User[]>([])
 const authStore = useAuthStore()
@@ -122,11 +142,16 @@ const form = reactive({
   username: '',
   email: '',
   password: '',
-  role: 'user',
+  role: 'internal_employee',
 })
 
 const roleForm = reactive({
-  role: 'user',
+  role: 'internal_employee',
+})
+
+const resetPasswordResult = reactive({
+  username: '',
+  password: '',
 })
 
 const rules: FormRules = {
@@ -164,7 +189,7 @@ const handleSubmit = async () => {
     form.username = ''
     form.email = ''
     form.password = ''
-    form.role = 'user'
+    form.role = 'internal_employee'
     loadUsers()
   } catch {
     ElMessage.error(t('users.addFailed'))
@@ -193,25 +218,67 @@ const resetPassword = async (user: any) => {
   }
 
   try {
-    await http.post(`/admin/users/${user.id}/reset-password`)
+    await ElMessageBox.confirm(
+      t('users.confirmResetPassword', { username: user.username }),
+      t('users.resetPassword'),
+      { type: 'warning' },
+    )
+    const response = await http.post(`/admin/users/${user.id}/reset-password`) as any
+    const newPassword = response.new_password || response.data?.new_password || 'deepsearch123'
+    resetPasswordResult.username = user.username
+    resetPasswordResult.password = newPassword
+    showPasswordDialog.value = true
     ElMessage.success(t('users.passwordReset'))
-  } catch {
+    loadUsers()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
     ElMessage.error(t('users.resetFailed'))
+  }
+}
+
+const copyText = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.opacity = '0'
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textArea)
+}
+
+const copyResetPassword = async () => {
+  try {
+    await copyText(resetPasswordResult.password)
+    ElMessage.success(t('users.passwordCopied'))
+  } catch {
+    ElMessage.error(t('users.passwordCopyFailed'))
   }
 }
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 const isCurrentUser = (user: User) => user.id === authStore.user?.id
-const canManageUser = (user: User) => isSuperAdmin.value || user.role === 'user'
+const isEndUserRole = (role?: string) => ['internal_employee', 'external_customer', 'user'].includes(role || '')
+const canManageUser = (user: User) => isSuperAdmin.value || isEndUserRole(user.role)
 const cannotToggleStatus = (user: User) => isCurrentUser(user) || !canManageUser(user)
 const getRoleText = (role: User['role']) => ({
   super_admin: t('users.superAdmin'),
   admin: t('users.admin'),
-  user: t('users.regularUser'),
+  internal_employee: t('users.internalEmployee'),
+  external_customer: t('users.externalCustomer'),
+  user: t('users.internalEmployee'),
 }[role] || role)
 const getRoleTagType = (role: User['role']) => ({
   super_admin: 'danger',
   admin: 'warning',
+  internal_employee: '',
+  external_customer: 'info',
   user: '',
 }[role] || '')
 
@@ -237,3 +304,37 @@ const handleRoleSubmit = async () => {
 
 onMounted(() => loadUsers())
 </script>
+
+<style scoped>
+.reset-password-result {
+  display: grid;
+  gap: 14px;
+}
+
+.reset-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.reset-label {
+  color: var(--el-text-color-secondary);
+}
+
+.reset-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.password-code {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+</style>

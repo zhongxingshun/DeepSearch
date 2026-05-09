@@ -10,6 +10,12 @@ from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.access_control import (
+    ROLE_INTERNAL_EMPLOYEE,
+    is_admin_role,
+    is_super_admin_role,
+    normalize_role,
+)
 
 
 class User(Base):
@@ -26,8 +32,8 @@ class User(Base):
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="user"
-    )  # admin, user
+        String(30), nullable=False, default=ROLE_INTERNAL_EMPLOYEE
+    )  # super_admin, admin, internal_employee, external_customer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -51,12 +57,12 @@ class User(Base):
     @property
     def is_admin(self) -> bool:
         """是否为管理员"""
-        return self.role in {"admin", "super_admin"}
+        return is_admin_role(self.role)
 
     @property
     def is_super_admin(self) -> bool:
         """是否为超级管理员"""
-        return self.role == "super_admin"
+        return is_super_admin_role(self.role)
 
     @property
     def is_locked(self) -> bool:
@@ -84,7 +90,7 @@ class User(Base):
         return {
             "id": self.id,
             "username": self.username,
-            "role": self.role,
+            "role": normalize_role(self.role),
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

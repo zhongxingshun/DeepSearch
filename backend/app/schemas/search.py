@@ -34,6 +34,7 @@ class SearchResult(BaseModel):
     file_type: str = Field(..., description="文件类型")
     file_size: int = Field(..., description="文件大小")
     file_path: str = Field(..., description="文件路径")
+    visibility_scope: str = Field(default="public", description="文件开放范围")
     content_snippet: str = Field(..., description="内容片段（带高亮）")
     score: float = Field(default=0, description="相关性得分")
     highlights: list[SearchHighlight] = Field(default=[], description="高亮信息")

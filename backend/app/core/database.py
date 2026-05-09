@@ -103,6 +103,56 @@ async def ensure_schema_compatibility() -> None:
         await conn.execute(
             text(
                 """
+                ALTER TABLE files
+                ADD COLUMN IF NOT EXISTS visibility_scope VARCHAR(30) DEFAULT 'public'
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE files
+                SET visibility_scope = 'public'
+                WHERE visibility_scope IS NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE files
+                ALTER COLUMN visibility_scope SET DEFAULT 'public'
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE users
+                SET role = 'internal_employee'
+                WHERE role = 'user'
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE users
+                ALTER COLUMN role SET DEFAULT 'internal_employee'
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_files_visibility_scope
+                ON files (visibility_scope)
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS file_share_links (
                     id SERIAL PRIMARY KEY,
                     file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -132,6 +182,19 @@ async def ensure_schema_compatibility() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_file_share_links_code
                 ON file_share_links (code)
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT NOT NULL DEFAULT '',
+                    updated_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
                 """
             )
         )
