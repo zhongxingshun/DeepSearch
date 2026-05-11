@@ -12,6 +12,7 @@ services:
     container_name: deepsearch-frontend
     restart: unless-stopped
     environment:
+      - FRAME_ANCESTORS=${FRAME_ANCESTORS:-'self'}
       - NO_PROXY=localhost,127.0.0.1,backend,postgres,redis,meilisearch,.local,169.254/16
       - no_proxy=localhost,127.0.0.1,backend,postgres,redis,meilisearch,.local,169.254/16
     ports:

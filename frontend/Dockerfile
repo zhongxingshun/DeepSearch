@@ -31,6 +31,7 @@ LABEL description="DeepSearch Frontend Web Server"
 
 # 复制自定义 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY docker-entrypoint.d/ /docker-entrypoint.d/
 
 # 从构建阶段复制静态文件
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -40,7 +41,8 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
     touch /var/run/nginx.pid && \
-    chown -R nginx:nginx /var/run/nginx.pid
+    chown -R nginx:nginx /var/run/nginx.pid && \
+    chmod +x /docker-entrypoint.d/*.sh
 
 # 暴露端口
 EXPOSE 80

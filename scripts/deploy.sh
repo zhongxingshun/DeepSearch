@@ -254,6 +254,12 @@ MEILI_MASTER_KEY=${meili_key}
 # ---------- 安全密钥 ----------
 JWT_SECRET_KEY=${jwt_key}
 APP_SECRET_KEY=${app_key}
+
+# ---------- 嵌入配置 ----------
+# 默认只允许本站被同源页面 iframe 嵌入。
+# 如需允许导航系统嵌入，填导航系统完整 origin，多个 origin 用空格分隔。
+# 当前导航系统示例：FRAME_ANCESTORS="'self' http://192.168.254.99:8080"
+FRAME_ANCESTORS="'self' http://192.168.254.99:8080"
 ENV_EOF
 
     chmod 600 "$ENV_FILE"

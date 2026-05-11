@@ -266,14 +266,14 @@
         </template>
       </el-table-column>
       <el-table-column :label="t('files.size')" width="100" prop="file_size_human" />
-      <el-table-column :label="t('files.visibilityScope')" width="120">
+      <el-table-column v-if="isAdmin" :label="t('files.visibilityScope')" width="120">
         <template #default="{ row }">
           <el-tag size="small" :type="getVisibilityTagType(row.visibility_scope)">
             {{ getVisibilityText(row.visibility_scope) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column :label="t('files.statusLabel')" width="110">
+      <el-table-column v-if="isAdmin" :label="t('files.statusLabel')" width="110">
         <template #default="{ row }">
           <el-tooltip
             v-if="shouldShowStatusDetail(row)"

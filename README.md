@@ -124,7 +124,7 @@ bash scripts/deploy.sh status              # 查看容器状态
 bash scripts/deploy.sh health              # 健康检查（7 个服务）
 bash scripts/deploy.sh logs                # 实时日志（全部）
 bash scripts/deploy.sh logs backend        # 只看后端日志
-bash scripts/deploy.sh update              # 更新部署（拉代码+重建+重启）
+bash scripts/deploy.sh update              # 当前更新部署（服务器现场构建+迁移+重启）
 bash scripts/deploy.sh backup              # 备份数据库+文件
 bash scripts/deploy.sh clean               # 完全清理（⚠️ 删除所有数据）
 ```
@@ -374,6 +374,8 @@ ENV HOME=/home/deepsearch
 docker compose build --parallel backend celery-worker
 docker compose up -d --force-recreate backend celery-worker celery-beat
 ```
+
+当前生产更新仍是服务器现场构建镜像：先用 `rsync` 同步代码到 `/home/akuvox/DeepSearch`，再在服务器执行 `bash scripts/deploy.sh update`。目标流程是改成 GitHub Actions 构建版本化镜像，服务器只 `pull` 镜像、执行迁移并 `up -d --no-build`。在该流程落地前，不要误以为生产服务器会自动从 GitHub 拉代码或拉应用镜像。
 
 ### 5. bcrypt 版本锁定
 
