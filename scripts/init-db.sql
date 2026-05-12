@@ -135,7 +135,7 @@ CREATE TRIGGER trigger_files_updated
 -- 创建默认超级管理员用户 (密码: admin123456)
 -- 密码使用 bcrypt 加密
 INSERT INTO users (username, email, password_hash, role, is_active)
-VALUES ('admin', 'admin@deepsearch.local', '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS', 'super_admin', true)
+VALUES ('admin', 'admin@deepsearch.local', '$2b$12$/Qoe/3/4vvwlwsRgIjgOM.5zmDi/5Iq5bUiVGmFTWlXGDrOXtSrNi', 'super_admin', true)
 ON CONFLICT (username) DO NOTHING;
 
 -- 输出初始化信息

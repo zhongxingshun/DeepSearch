@@ -118,7 +118,7 @@ def upgrade() -> None:
         VALUES (
             'admin',
             'admin@deepsearch.local',
-            '$2b$12$LQv3c1yqBwevSCMPJqYVd.xLV6IRf3TJNWQmSL7FwYVGqE7KFvJdS',
+            '$2b$12$/Qoe/3/4vvwlwsRgIjgOM.5zmDi/5Iq5bUiVGmFTWlXGDrOXtSrNi',
             'super_admin',
             TRUE
         )

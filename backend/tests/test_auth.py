@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import AsyncClient
 
-from app.core.security import get_password_hash, validate_password_strength
+from app.core.security import get_password_hash, validate_password_strength, verify_password
 from app.models.user import User
 
 
@@ -65,13 +65,18 @@ class TestPasswordHashing:
 
     def test_verify_password(self):
         """测试密码验证"""
-        from app.core.security import verify_password
-        
         password = "Admin@123"
         hashed = get_password_hash(password)
         
         assert verify_password(password, hashed) is True
         assert verify_password("wrong_password", hashed) is False
+
+    def test_default_admin_password_hash(self):
+        """测试初始化脚本中的默认管理员密码哈希有效。"""
+        default_hash = "$2b$12$/Qoe/3/4vvwlwsRgIjgOM.5zmDi/5Iq5bUiVGmFTWlXGDrOXtSrNi"
+
+        assert verify_password("admin123456", default_hash) is True
+        assert verify_password("wrong_password", default_hash) is False
 
 
 class TestUserLockState:
